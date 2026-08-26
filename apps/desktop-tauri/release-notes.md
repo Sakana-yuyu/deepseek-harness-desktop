@@ -1,4 +1,4 @@
-# DeepSeek Harness Desktop 0.1.1-rc.1-0.1
+# DeepSeek Harness Desktop 0.1.1-rc.1-0.2
 
 ## English
 
@@ -8,9 +8,10 @@ The installer contains a trimmed Harness source tree without `node_modules`. On 
 
 ### What's new
 
-- Refreshes the bundled Harness source to upstream `dsh@0.1.1-rc.1`, with the upstream changes since 0.1.0-rc.8 to the agent loop, web UI, and tools.
-- Keeps the earlier desktop provisioning guarantees: derived workspace declarations, bootable-tree fallback when provisioning fails, install deadlines, and harness-tree cleanup.
-- Windows installation closes a running desktop process before replacing files and refreshes an existing desktop shortcut with the versioned DeepSeek fish icon.
+- Fixes the repeated slow start after installing: when provisioning adopted a host Node (for example an nvm-managed `node.exe`), the reuse check required desktop-managed runtime paths that never exist, so every launch re-seeded the harness tree and re-ran `pnpm install` over the network. Launches now record and validate the Node actually used, and accept a repointed version-manager symlink whenever the target still satisfies the supported engine range.
+- Completed provisioning work is no longer thrown away: an installed harness tree is never deleted and recopied during repair, and an existing dependency store skips `pnpm install`, so environment drift rebuilds only what is missing.
+- WSL launches get the same reuse rule: `pnpm install` runs only when the dependency store is absent.
+- Bundled Harness source is unchanged at upstream `dsh@0.1.1-rc.1`.
 
 ### Included builds
 
@@ -28,9 +29,10 @@ DeepSeek Harness Desktop 是现有 `dsh web` 界面的 Tauri/WebView 外壳。
 
 ### 更新内容
 
-- 内置 Harness 源码更新至上游 `dsh@0.1.1-rc.1`，包含 0.1.0-rc.8 以来上游对 agent 循环、Web 界面和工具的更新。
-- 保留既有的桌面预配保障：workspace 声明派生、预配失败时回退到可启动树、安装期限与 harness 树清理。
-- Windows 安装会先关闭正在运行的桌面进程再替换文件，并用带版本号的 DeepSeek 鱼形图标刷新已有桌面快捷方式。
+- 修复安装后每次启动都变慢的问题：当预配采用了本机已有 Node（例如 nvm 管理的 `node.exe`）时，旧的重用检查要求桌面自管运行时路径必须存在，而这些路径永远不存在，导致每次启动都重新播种 harness 树并通过网络重跑 `pnpm install`。现在启动会记录并校验实际使用的 Node，只要版本管理器符号链接指向的版本仍满足支持的引擎范围就直接复用。
+- 已完成的预配工作不再被丢弃：修复过程中绝不删除重拷已安装的 harness 树，依赖存储已存在时跳过 `pnpm install`，环境漂移只重建真正缺失的部分。
+- WSL 启动获得同样的复用规则：仅当依赖存储不存在时才执行 `pnpm install`。
+- 内置 Harness 源码保持在上游 `dsh@0.1.1-rc.1` 不变。
 
 ### 包含的构建
 
