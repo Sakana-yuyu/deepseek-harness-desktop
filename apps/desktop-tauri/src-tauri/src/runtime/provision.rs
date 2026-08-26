@@ -51,7 +51,6 @@ const NODE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// for a failed provision, and one spare for an older still-running Host.
 const HARNESS_TREES_KEPT: usize = 3;
 
-
 /// Node distribution archive coordinates for a given OS/arch.
 #[derive(Debug)]
 pub(crate) struct NodeArchiveSpec {
@@ -143,25 +142,32 @@ pub async fn ensure_runtime(
         boot_log::info(&recoverable_message("create home", &dsh_home, error));
     }
 
-    progress(ProvisionEvent::Status(
-        i18n::t(Msg::StatusExtractHarness).into(),
-    ));
-    progress(ProvisionEvent::Progress(12));
+    // A bootable tree under this bundle-hash directory is a completed
+    // provision of the same bundled source; deleting and recopying it costs a
+    // full seed for no content change. Only an unbootable tree is re-seeded.
     let mut harness_root = harness_root;
     let mut cli_entry = cli_entry;
-    if let Err(error) = seed_harness_tree(&bundled, &harness_root) {
-        boot_log::info(&format!("seed fallback: {error}"));
-        if !cli_entry.is_file() {
-            if let Some(existing) = find_existing_harness(&app_root) {
-                boot_log::info(&format!("reusing harness {}", existing.display()));
-                harness_root = existing;
-                cli_entry = harness_root
-                    .join("apps")
-                    .join("cli")
-                    .join("lib")
-                    .join("bin.js");
-            } else if !is_recoverable_io(&error) {
-                return Err(error);
+    if harness_tree_bootable(&harness_root) {
+        boot_log::info("harness tree installed; seed skipped");
+    } else {
+        progress(ProvisionEvent::Status(
+            i18n::t(Msg::StatusExtractHarness).into(),
+        ));
+        progress(ProvisionEvent::Progress(12));
+        if let Err(error) = seed_harness_tree(&bundled, &harness_root) {
+            boot_log::info(&format!("seed fallback: {error}"));
+            if !cli_entry.is_file() {
+                if let Some(existing) = find_existing_harness(&app_root) {
+                    boot_log::info(&format!("reusing harness {}", existing.display()));
+                    harness_root = existing;
+                    cli_entry = harness_root
+                        .join("apps")
+                        .join("cli")
+                        .join("lib")
+                        .join("bin.js");
+                } else if !is_recoverable_io(&error) {
+                    return Err(error);
+                }
             }
         }
     }
@@ -214,14 +220,20 @@ pub async fn ensure_runtime(
         }
     }
 
-    progress(ProvisionEvent::Status(
-        i18n::t(Msg::StatusInstallDeps).into(),
-    ));
-    progress(ProvisionEvent::Progress(50));
-    if let Err(error) = pnpm_install_harness(&node_binary, &pnpm_binary, &harness_root) {
-        boot_log::info(&format!("pnpm install harness fallback: {error}"));
-        if !harness_root.join("node_modules").join(".pnpm").is_dir() && !is_recoverable_io(&error) {
-            return Err(error);
+    if harness_root.join("node_modules").join(".pnpm").is_dir() {
+        boot_log::info("harness dependencies installed; pnpm install skipped");
+    } else {
+        progress(ProvisionEvent::Status(
+            i18n::t(Msg::StatusInstallDeps).into(),
+        ));
+        progress(ProvisionEvent::Progress(50));
+        if let Err(error) = pnpm_install_harness(&node_binary, &pnpm_binary, &harness_root) {
+            boot_log::info(&format!("pnpm install harness fallback: {error}"));
+            if !harness_root.join("node_modules").join(".pnpm").is_dir()
+                && !is_recoverable_io(&error)
+            {
+                return Err(error);
+            }
         }
     }
 
@@ -364,17 +376,26 @@ fn manifest_ready(
     let Some(node_path) = parsed["nodePath"].as_str() else {
         return false;
     };
-    node_matches_manifest(Path::new(node_path), &parsed)
+    node_matches_manifest(Path::new(node_path), &parsed, &node_binary_compatible)
 }
 
-fn node_matches_manifest(node_binary: &Path, parsed: &serde_json::Value) -> bool {
+/// The recorded Node proves the previous provision reusable: the binary must
+/// exist on disk. Byte equality with the manifest fast-paths the stable case
+/// without spawning anything; byte drift (an nvm-style symlink repointed to a
+/// different installed version) is accepted when the new binary still passes
+/// `probe`, so switching host Node versions does not force a full reprovision.
+fn node_matches_manifest(
+    node_binary: &Path,
+    parsed: &serde_json::Value,
+    probe: &dyn Fn(&Path) -> bool,
+) -> bool {
     let Ok(meta) = fs::metadata(node_binary) else {
         return false;
     };
-    if let Some(bytes) = parsed["nodeBytes"].as_u64() {
-        return meta.len() == bytes;
+    match parsed["nodeBytes"].as_u64() {
+        Some(bytes) => bytes == meta.len() || probe(node_binary),
+        None => true,
     }
-    true
 }
 
 /// The Node path recorded by the previous provision, if any.
@@ -446,11 +467,7 @@ fn mtime_of(path: &Path) -> SystemTime {
 /// Order candidate harness trees newest first so recovery prefers the most
 /// recently provisioned tree; equal timestamps fall back to name order.
 fn sort_harness_trees_newest_first(dirs: &mut [PathBuf]) {
-    dirs.sort_by(|a, b| {
-        mtime_of(b)
-            .cmp(&mtime_of(a))
-            .then_with(|| b.cmp(a))
-    });
+    dirs.sort_by(|a, b| mtime_of(b).cmp(&mtime_of(a)).then_with(|| b.cmp(a)));
 }
 
 fn find_existing_harness(app_root: &Path) -> Option<PathBuf> {
@@ -848,9 +865,7 @@ fn wait_status_with_timeout(
     timeout: Duration,
     label: &str,
 ) -> Result<std::process::ExitStatus, String> {
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("{label} 启动失败: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| format!("{label} 启动失败: {e}"))?;
     wait_child_with_timeout(&mut child, timeout, label)
 }
 
@@ -1023,8 +1038,7 @@ fn pnpm_install_harness(
     // fill the OS pipe buffer and block the child before a deadline can fire.
     let stdout_handle = spawn_pipe_reader(child.stdout.take());
     let stderr_handle = spawn_pipe_reader(child.stderr.take());
-    let status =
-        wait_child_with_timeout(&mut child, PNPM_HARNESS_INSTALL_TIMEOUT, "pnpm install")?;
+    let status = wait_child_with_timeout(&mut child, PNPM_HARNESS_INSTALL_TIMEOUT, "pnpm install")?;
     let stdout = stdout_handle.join().unwrap_or_default();
     let stderr = stderr_handle.join().unwrap_or_default();
 
@@ -1038,9 +1052,7 @@ fn pnpm_install_harness(
     Ok(())
 }
 
-fn spawn_pipe_reader<T: Read + Send + 'static>(
-    pipe: Option<T>,
-) -> std::thread::JoinHandle<String> {
+fn spawn_pipe_reader<T: Read + Send + 'static>(pipe: Option<T>) -> std::thread::JoinHandle<String> {
     std::thread::spawn(move || {
         let mut buffer = String::new();
         if let Some(mut pipe) = pipe {
@@ -1053,9 +1065,9 @@ fn spawn_pipe_reader<T: Read + Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::{
-        find_existing_harness, gc_harness_versions, harness_root_for_bundle,
-        harness_tree_bootable, manifest_ready, node_archive_spec_for, node_matches_manifest,
-        safe_archive_relative_path, HARNESS_TREES_KEPT,
+        find_existing_harness, gc_harness_versions, harness_root_for_bundle, harness_tree_bootable,
+        manifest_ready, node_archive_spec_for, node_matches_manifest, safe_archive_relative_path,
+        HARNESS_TREES_KEPT,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1203,21 +1215,45 @@ mod tests {
     }
 
     #[test]
-    fn treats_node_byte_size_as_manifest_identity() {
+    fn treats_byte_equality_as_manifest_identity_without_probing() {
         let dir = std::env::temp_dir().join(format!("dsh-node-manifest-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         let node = dir.join("node.exe");
         fs::write(&node, b"node-binary").unwrap();
         let bytes = fs::metadata(&node).unwrap().len();
+
+        let probes = std::cell::Cell::new(0);
+        let probe = |_: &Path| {
+            probes.set(probes.get() + 1);
+            false
+        };
         assert!(node_matches_manifest(
             &node,
-            &serde_json::json!({ "nodeBytes": bytes })
+            &serde_json::json!({ "nodeBytes": bytes }),
+            &probe
+        ));
+        assert_eq!(probes.get(), 0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn accepts_drifted_node_only_when_it_still_satisfies_the_engine_range() {
+        let dir = std::env::temp_dir().join(format!("dsh-node-drift-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let node = dir.join("node.exe");
+        fs::write(&node, b"a-different-node-binary").unwrap();
+        let stale_bytes = 1;
+
+        assert!(node_matches_manifest(
+            &node,
+            &serde_json::json!({ "nodeBytes": stale_bytes }),
+            &|_: &Path| true
         ));
         assert!(!node_matches_manifest(
             &node,
-            &serde_json::json!({ "nodeBytes": bytes + 1 })
+            &serde_json::json!({ "nodeBytes": stale_bytes }),
+            &|_: &Path| false
         ));
-        assert!(node_matches_manifest(&node, &serde_json::json!({})));
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1258,12 +1294,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(manifest_ready(
-            &manifest_path,
-            &bundled,
-            &harness,
-            &cli,
-        ));
+        assert!(manifest_ready(&manifest_path, &bundled, &harness, &cli,));
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1299,12 +1330,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(!manifest_ready(
-            &manifest_path,
-            &bundled,
-            &harness,
-            &cli,
-        ));
+        assert!(!manifest_ready(&manifest_path, &bundled, &harness, &cli,));
         let _ = fs::remove_dir_all(&dir);
     }
 }

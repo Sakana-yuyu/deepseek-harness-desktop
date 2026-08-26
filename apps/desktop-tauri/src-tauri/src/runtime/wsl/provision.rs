@@ -5,6 +5,7 @@ use std::path::Path;
 
 use crate::i18n::{self, Msg};
 use crate::overlay::{linux_plugin_file_url, overlay_yaml};
+use crate::runtime::boot_log;
 use crate::runtime::config::{npm_registry, DEFAULT_NODE_VERSION, DEFAULT_PNPM_VERSION};
 use crate::runtime::host_env::node_version_compatible;
 use crate::runtime::provision::{download_file, node_archive_spec_for};
@@ -37,8 +38,9 @@ pub struct WslRuntimePaths {
     pub linux_patch: Option<String>,
 }
 
-/// Copy the bundled tree onto the Linux disk, ensure a Linux Node, run
-/// `pnpm install`, seed `$HOME/.dsh` credentials once, and implant the overlay.
+/// Copy the bundled tree onto the Linux disk, ensure a Linux Node, install
+/// harness dependencies when the dependency store is absent, seed `$HOME/.dsh`
+/// credentials once, and implant the overlay.
 pub async fn ensure_wsl_runtime(
     runner: &dyn WslRunner,
     distro: &str,
@@ -86,7 +88,14 @@ pub async fn ensure_wsl_runtime(
         .ok_or_else(|| format!("{}: invalid node path {linux_node}", err_node()))?;
     let linux_path = format!("{node_bin_dir}:/usr/bin");
 
-    run_pnpm_install(runner, distro, &linux_path, &linux_harness_root)?;
+    // An existing dependency store marks a completed provision of this bundle;
+    // rerunning `pnpm install` would cost a full registry resolve for no change.
+    let deps_store = format!("{linux_harness_root}/node_modules/.pnpm");
+    if wsl_test_d(runner, distro, &deps_store)? {
+        boot_log::info("wsl harness dependencies installed; pnpm install skipped");
+    } else {
+        run_pnpm_install(runner, distro, &linux_path, &linux_harness_root)?;
+    }
     progress(ProvisionEvent::Progress(75));
 
     seed_linux_home(runner, distro, windows_dsh_home, &linux_dsh_home)?;
@@ -401,6 +410,13 @@ fn wsl_test_f(runner: &dyn WslRunner, distro: &str, path: &str) -> Result<bool, 
     Ok(out.code == 0)
 }
 
+/// `test -d` inside the WSL distro: true when `path` is a directory.
+fn wsl_test_d(runner: &dyn WslRunner, distro: &str, path: &str) -> Result<bool, String> {
+    let out = wsl_exec(runner, distro, &["test", "-d", path])
+        .map_err(|e| format!("{}: {e}", err_harness()))?;
+    Ok(out.code == 0)
+}
+
 fn wsl_exec(
     runner: &dyn WslRunner,
     distro: &str,
@@ -596,6 +612,17 @@ mod tests {
                     "-v".into(),
                 ],
                 ok_out("v22.19.0\n"),
+            ),
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
+                    "test".into(),
+                    "-d".into(),
+                    format!("/home/u/.local/share/dsh-desktop/harness-versions/{hash}/node_modules/.pnpm"),
+                ],
+                fail_out(),
             ),
             (
                 vec![
@@ -812,6 +839,17 @@ mod tests {
                     "-d".into(),
                     "Ubuntu".into(),
                     "--exec".into(),
+                    "test".into(),
+                    "-d".into(),
+                    format!("/home/u/.local/share/dsh-desktop/harness-versions/{hash}/node_modules/.pnpm"),
+                ],
+                fail_out(),
+            ),
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
                     "timeout".into(),
                 ],
                 ok_out(""),
@@ -877,6 +915,126 @@ mod tests {
             }),
             "command -v must use Linux-only PATH, recorded: {recorded:?}"
         );
+
+        let _ = fs::remove_dir_all(&bundled);
+        let _ = fs::remove_dir_all(&windows_home);
+    }
+
+    #[test]
+    fn skips_pnpm_install_when_the_dependency_store_already_exists() {
+        let bundled = temp_dir("bundled-installed");
+        let windows_home = temp_dir("win-home-installed");
+        let hash = "cafe01";
+        let harness_bin =
+            format!("/home/u/.local/share/dsh-desktop/harness-versions/{hash}/apps/cli/lib/bin.js");
+        let preferred_node = "/home/u/.local/share/dsh-desktop/runtime/node/bin/node";
+        let deps_store =
+            format!("/home/u/.local/share/dsh-desktop/harness-versions/{hash}/node_modules/.pnpm");
+
+        let runner = Scripted::new(vec![
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
+                    "printenv".into(),
+                    "HOME".into(),
+                ],
+                ok_out("/home/u\n"),
+            ),
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
+                    "test".into(),
+                    "-f".into(),
+                    harness_bin,
+                ],
+                ok_out(""),
+            ),
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
+                    "test".into(),
+                    "-x".into(),
+                    preferred_node.into(),
+                ],
+                ok_out(""),
+            ),
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
+                    preferred_node.into(),
+                    "-v".into(),
+                ],
+                ok_out("v22.19.0\n"),
+            ),
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
+                    "test".into(),
+                    "-d".into(),
+                    deps_store,
+                ],
+                ok_out(""),
+            ),
+            // Linux home already seeded — skip credential copy.
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
+                    "test".into(),
+                    "-f".into(),
+                    "/home/u/.dsh/.credentials.yaml".into(),
+                ],
+                ok_out(""),
+            ),
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
+                    "test".into(),
+                    "-f".into(),
+                    "/home/u/.dsh/.env".into(),
+                ],
+                ok_out(""),
+            ),
+        ]);
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let paths = rt
+            .block_on(ensure_wsl_runtime(
+                &runner,
+                "Ubuntu",
+                &bundled,
+                hash,
+                &windows_home,
+                None,
+                None,
+                |_| {},
+            ))
+            .expect("ensure_wsl_runtime");
+        assert!(paths.linux_harness_root.contains(hash));
+
+        let recorded = runner.recorded();
+        for args in recorded {
+            assert!(
+                args.iter().all(|a| a != "timeout"),
+                "pnpm install must be skipped when the dependency store exists: {args:?}"
+            );
+        }
 
         let _ = fs::remove_dir_all(&bundled);
         let _ = fs::remove_dir_all(&windows_home);
