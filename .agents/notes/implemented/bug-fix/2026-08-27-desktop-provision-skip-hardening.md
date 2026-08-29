@@ -21,3 +21,7 @@ This note owns the reuse guards and the recorded-Node identity policy. The provi
 **Accept byte drift without any probe.** Rejected: a PATH change to an outside-range Node would pass reuse and crash the Host mid-session; the single probe keeps the boot guarantee at roughly 100 ms once per actual drift.
 
 **Record the canonicalized Node path instead of probing on drift.** Rejected: canonical resolution behaves differently across junctions, symlinks, and plain installs that users actually have, while the engine-range probe answers directly whether the drifted binary can boot.
+
+## Consequences
+
+Later launches reference the work completed for the recorded bundle hash instead of redoing it: an adopted host Node passes reuse after one engine-range probe, a bootable tree survives repair, an existing dependency store skips `pnpm install`, and WSL provisioning applies the same skip. The repeat-boot cost after one successful provision is the manifest read plus the probe; a genuine drift — a Node repoint outside the supported engine range — falls back to the normal scan/download path instead of booting an incompatible runtime.
