@@ -1,4 +1,4 @@
-# DeepSeek Harness Desktop 0.1.1-rc.1-0.2
+# DeepSeek Harness Desktop 0.1.1-rc.2-0.1
 
 ## English
 
@@ -8,10 +8,9 @@ The installer contains a trimmed Harness source tree without `node_modules`. On 
 
 ### What's new
 
-- Fixes the repeated slow start after installing: when provisioning adopted a host Node (for example an nvm-managed `node.exe`), the reuse check required desktop-managed runtime paths that never exist, so every launch re-seeded the harness tree and re-ran `pnpm install` over the network. Launches now record and validate the Node actually used, and accept a repointed version-manager symlink whenever the target still satisfies the supported engine range.
-- Completed provisioning work is no longer thrown away: an installed harness tree is never deleted and recopied during repair, and an existing dependency store skips `pnpm install`, so environment drift rebuilds only what is missing.
-- WSL launches get the same reuse rule: `pnpm install` runs only when the dependency store is absent.
-- Bundled Harness source is unchanged at upstream `dsh@0.1.1-rc.1`.
+- Refreshes the bundled Harness source to upstream `dsh@0.1.1-rc.2`, led by the unified image request pipeline: attachments are stored as a deterministic canonical encoding before upload, `read_image` reports downscaled dimensions and the coordinate scale to read back, and wide images are accepted within the canonical budget.
+- Vision requests are more resilient: when DeepSeek Files resolution fails, images fall back to inline payloads, file uploads and streaming use independent timeouts, and opaque WebP files that omit the alpha channel are accepted.
+- Keeps the desktop provisioning guarantees shipped in 0.1.1-rc.1-0.2: launches reuse the provisioned Node and dependency store instead of reseeding the harness tree.
 
 ### Included builds
 
@@ -29,10 +28,9 @@ DeepSeek Harness Desktop 是现有 `dsh web` 界面的 Tauri/WebView 外壳。
 
 ### 更新内容
 
-- 修复安装后每次启动都变慢的问题：当预配采用了本机已有 Node（例如 nvm 管理的 `node.exe`）时，旧的重用检查要求桌面自管运行时路径必须存在，而这些路径永远不存在，导致每次启动都重新播种 harness 树并通过网络重跑 `pnpm install`。现在启动会记录并校验实际使用的 Node，只要版本管理器符号链接指向的版本仍满足支持的引擎范围就直接复用。
-- 已完成的预配工作不再被丢弃：修复过程中绝不删除重拷已安装的 harness 树，依赖存储已存在时跳过 `pnpm install`，环境漂移只重建真正缺失的部分。
-- WSL 启动获得同样的复用规则：仅当依赖存储不存在时才执行 `pnpm install`。
-- 内置 Harness 源码保持在上游 `dsh@0.1.1-rc.1` 不变。
+- 内置 Harness 源码更新至上游 `dsh@0.1.1-rc.2`，核心是统一的图片请求管线：附件在上传前存储为确定性的规范编码，`read_image` 会报告缩放后的尺寸与读回应使用的坐标比例，宽图在规范预算内被接受。
+- 视觉请求更可靠：DeepSeek Files 解析失败时图片回退为内联载荷，文件上传与流式传输使用独立超时，接受省略 alpha 通道的不透明 WebP。
+- 保留 0.1.1-rc.1-0.2 带来的桌面预配保障：启动时复用已预配的 Node 与依赖存储，不再重新播种 harness 树。
 
 ### 包含的构建
 
