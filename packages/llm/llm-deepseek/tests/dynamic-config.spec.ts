@@ -4,10 +4,12 @@ import { access, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import LlmRuntime, { createUserMessage, INVALID_CREDENTIAL_CODE } from '@deepseek-ai/dsh-llm'
-import AttachmentStore, { AttachmentId } from '@deepseek-ai/dsh-attachment'
+import AttachmentStore, { AttachmentId, ImageVariantId } from '@deepseek-ai/dsh-attachment'
 import type {
   ImageAttachmentLimits,
   ImageAttachmentRef,
+  ImageRequestPolicy,
+  RequestImageAttachment,
   SaveImageAttachment,
   StoredImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
@@ -49,6 +51,25 @@ class StaticAttachmentStore extends AttachmentStore {
 
   readImage(ref: ImageAttachmentRef, _signal?: AbortSignal): Promise<StoredImageAttachment> {
     return Promise.resolve({ ref, data: Uint8Array.of(1, 2, 3) })
+  }
+
+  override readImageRequest(
+    ref: ImageAttachmentRef,
+    _policy: ImageRequestPolicy,
+    _signal?: AbortSignal,
+  ): Promise<RequestImageAttachment> {
+    return Promise.resolve({
+      variantId: ImageVariantId(`sha256:${'b'.repeat(64)}`),
+      attachment: ref,
+      data: Uint8Array.of(1, 2, 3),
+      mediaType: ref.mediaType,
+      bytes: 3,
+      width: ref.width,
+      height: ref.height,
+      depth: 'uchar',
+      space: 'srgb',
+      hasAlpha: true,
+    })
   }
 }
 
@@ -164,7 +185,7 @@ describe('request-level dynamic configuration', () => {
     ])
   })
 
-  it('applies a changed request image bound to the next request', async () => {
+  it('applies changed request file limits to the next request', async () => {
     vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
     const dir = await home()
     const server = await mockServer([
@@ -181,14 +202,14 @@ describe('request-level dynamic configuration', () => {
     })]
 
     await assemble(ctx, { model: 'deepseek-v4-flash-vision-exp', messages })
-    await ctx.settings.update(NS, { maxRequestImageBytes: 4 })
+    await ctx.settings.update(NS, { maxRequestFilesBytes: 4, imageOffloadByteQuantum: 2 })
     await assemble(ctx, { model: 'deepseek-v4-flash-vision-exp', messages })
 
     const first = (server.requests[0] as { messages: Array<{ content: unknown }> }).messages[0]?.content
     const second = (server.requests[1] as { messages: Array<{ content: unknown }> }).messages[0]?.content
-    expect(JSON.stringify(first).match(/"type":"image_url"/g)).toHaveLength(2)
+    expect(JSON.stringify(first).match(/"type":"file"/g)).toHaveLength(2)
     expect(JSON.stringify(second)).toContain('[image omitted to keep the request within its image limit')
-    expect(JSON.stringify(second).match(/"type":"image_url"/g)).toHaveLength(1)
+    expect(JSON.stringify(second).match(/"type":"file"/g)).toHaveLength(1)
   })
 
   it('re-registers the route in place when the captured retry policy changes, without an empty-registry window', async () => {

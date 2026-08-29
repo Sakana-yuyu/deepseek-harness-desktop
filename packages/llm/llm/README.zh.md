@@ -25,7 +25,7 @@
 - `ctx.llm.listModels(provider: string): Promise<LlmModelInfo[]>` 发现某个已注册提供方当前公布的模型。
 - `ctx.llm.resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>` 从拥有该精确路由的适配器中，解析并校验确切模型身份，以及可用上下文、输出默认值和推理（reasoning）元数据；异步适配器可选地支持取消。
 - `ctx.llm.resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>` 校验显式推理强度，并填入适配器配置的调用默认值，但不自动调整。
-- `ctx.llm.prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>` 在一次精确模型查询中解析配置、脱耦的上下文元数据以及标明哪些字段由适配器默认值填入的标记，再将当前适配器注册和不可变重试策略捕获为一次可取消、一次性调用。
+- `ctx.llm.prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>` 在一次精确模型查询中解析配置、脱耦的上下文与模态元数据以及标明哪些字段由适配器默认值填入的标记，再把适配器匹配的分发世代和不可变重试策略捕获为一次可取消、一次性调用。
 - `ctx.llm.stream(options: GenerateOptions): AsyncIterable<StreamChunk>` 将一次模型调用流式输出为原始分片（token 级增量）。消费方使用 `BlockAssembler` 将分片组装为块／消息。
 
 `LlmRuntime` 将最终适配器选择、同步分发、迭代器构造和迭代期间的失败，统一转换为流协议唯一的终止形式：`finish { kind: 'error' | 'aborted', failure }`。部分增量输出后发生失败时，内容块可能仍未闭合；消费方会丢弃这些不完整输出。`llm/stream` middleware、嵌套调用、适配器清理和下游消费方的错误仍会抛出，因为它们属于插件或消费方失败，而非模型请求结果。已准备调用会暴露随其确切适配器注册一同捕获的不可变重试策略；完全由 middleware 处理的路由没有服务策略。
@@ -38,7 +38,7 @@
 
 确切模型元数据是独立的正确性查询，不是 catalog 装饰或全局 LLM 设置。`resolveModelInfo()` 会向拥有精确提供方／模型路由的适配器查询一次；适配器可以描述未列出的动态模型。缺少 `context` 表示模型容量未知；缺少 `defaultMaxTokens` 表示继续沿用提供方自身的输出默认值；缺少 `reasoning` 则表示推理能力不可用。无效的身份、上下文、输出默认值或推理元数据会以 `INVALID_MODEL_INFO`、`INVALID_MODEL_CONTEXT`、`INVALID_MODEL_MAX_TOKENS` 或 `INVALID_MODEL_REASONING` 失败。
 
-`defaultMaxTokens` 是适配器配置的单次请求输出上限，不是模型硬上限。仅当请求省略 `maxTokens` 时，`resolveCallConfig()` 才会填入该值；显式上限优先。推理标识符是由适配器定义的不透明字符串，而非核心枚举：同一次解析只接受与已公布标识符完全一致的值，在存在 `defaultEffort` 时填入它，否则保留提供方默认值。异步模型解析器会接收调用方信号，并且必须在取消后尽快结算。`prepareCall()` 还会返回同一次查询得到的、与适配器内部状态分离的上下文元数据，通过 `adapterDefaults` 标明填入了哪些 `maxTokens` 和 `reasoningEffort` 字段，并在请求头记录和最终分发期间始终保留同一项精确的适配器注册。因此，HMR（热模块替换）不会把一个适配器的能力结果与另一个适配器的请求混用；复用其一次性句柄或更改调用配置字段会以 `INVALID_PREPARED_CALL` 失败。不支持的显式或配置推理强度会在提供方 I/O 前以 `UNSUPPORTED_REASONING_EFFORT` 失败。
+`defaultMaxTokens` 是适配器配置的单次请求输出上限，不是模型硬上限。仅当请求省略 `maxTokens` 时，`resolveCallConfig()` 才会填入该值；显式上限优先。推理标识符是由适配器定义的不透明字符串，而非核心枚举：同一次解析只接受与已公布标识符完全一致的值，在存在 `defaultEffort` 时填入它，否则保留提供方默认值。异步模型解析器会接收调用方信号，并且必须在取消后尽快结算。`prepareCall()` 还会公开脱离内部状态的上下文和输入模态元数据，通过 `adapterDefaults` 标明填入了哪些 `maxTokens` 和 `reasoningEffort` 字段，并把这些事实绑定到执行最终分发的适配器世代。因此，HMR（热模块替换）或动态 settings 不会把一个世代的图片能力与另一个世代的端点组合；复用一次性句柄或更改调用配置字段会以 `INVALID_PREPARED_CALL` 失败。不支持的显式或配置推理强度会在提供方 I/O 前以 `UNSUPPORTED_REASONING_EFFORT` 失败。
 
 ### 事件
 
@@ -55,7 +55,9 @@
 
 `Message` 是投递、持久历史和模型请求共享的不可变值。每条消息从创建起都必须具有 `MessageId`、角色、内容和带类型的来源。`createMessage(input)` 生成标识，并返回与输入分离且深度冻结的值；`createUserMessage({ content, source })` 固定 user 角色；`createAssistantMessage({ content, source })` 固定 assistant 角色与模型来源类别；`createToolResultMessage({ callId, content, isError })` 固定 user 角色，并将工具来源与其结果块耦合；`freezeMessage(message)` 导入已有标识，绝不将其替换。改写消息时会保留标识，并产生另一个冻结值。浏览器端代码会从依赖最少的 `@deepseek-ai/dsh-llm/message` 入口导入这些值构造函数，而不是从包含服务的包根入口导入。
 
-消息内容是类型化内容块数组：`text`、`reasoning`、`tool-call`、`tool-result`。联合从可合并扩展的 `ContentBlockMap` 派生，因此插件可以通过 declaration merging 添加块类型。assistant 消息使用模型来源，其中携带生成该消息的提供方和模型，以及可选的适配器私有回放状态。dispatch 前，`LlmRuntime` 只在历史提供方路由与目标提供方路由当前由完全相同的适配器实例拥有时才保留该状态；随后由适配器判定能否在模型／提供方间恢复或转换该状态。核心块集只包含每条已发布路径都支持的块。多模态内容（图像、音频等）没有核心块类型；需要它的功能会通过 map 添加，并一并添加相应的适配器／UI／压缩（compaction）支持。
+消息内容是类型化内容块数组：`text`、`reasoning`、`image`、`tool-call`、`tool-result`。`ImageBlock` 只携带持久 `ImageAttachmentRef`；提供方字节和请求尺寸之后再解析。联合仍从可合并扩展的 `ContentBlockMap` 派生，因此插件可以通过 declaration merging 添加其他块类型。assistant 消息使用模型来源，其中携带生成该消息的提供方和模型，以及可选的适配器私有回放状态。dispatch 前，`LlmRuntime` 只在历史提供方路由与目标提供方路由当前由完全相同的适配器实例拥有时才保留该状态；随后由适配器判定能否在模型或提供方间恢复或转换该状态。
+
+每次分发都使用随适配器世代捕获的确切模型模态。支持图片的适配器把持久图片引用投影为路由专用请求版本。纯文本路由则收到确定性的附件占位文本，其中也包括嵌套工具结果图片，追加式会话历史不会改变。`offloadRequestImagesWithPolicy()` 提供确定性的从旧到新图片移除，支持按原始字节或 base64 计数，也支持图片数量或字节量步长；适配器提供确切派生版本的字节长度。
 
 流式输出是原始分片协议（`block-start`、`text-delta`、`reasoning-delta`、`tool-call-delta`、`block-end`、`usage`、`finish`）。每个适配器结果都以一个终止 `finish` 到达消费方；运行故障使用 `error` 或 `aborted` 作为结束原因，而不会跨流 API 抛出。`BlockAssembler` 是将分片组装为块／消息的唯一共享实现。成功的 `finish` 可以携带 `ReplayEnvelope`——不透明的响应级回放元数据，加上与发射块序列对齐的可选逐块条目。组装对内容与元数据只做一次保留/丢弃决定：`max-tokens` 结束会丢弃可能被截断的工具调用，数据在每个被丢弃的位置同步失去对应条目，因此存储的元数据始终描述存储的内容。
 

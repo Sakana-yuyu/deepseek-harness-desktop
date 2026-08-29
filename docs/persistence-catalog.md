@@ -506,18 +506,15 @@ Source: [`packages/llm/llm-retry/src/types.ts:11`](../packages/llm/llm-retry/src
 
 ```ts persistence-catalog
 /**
- * Records the selected preset and whether it came from the session
- * default, an explicit selection, or legacy-knob inference. The knob
+ * Records the selected preset as durable, log-only user intent. The knob
  * events follow in the same turn and control execution; this event stays
  * out of the model transcript and lets {@link effectivePermissionPreset}
- * preserve a selection when bundles match. `origin` is optional so logs
- * written before origin tracking remain readable but are never mistaken
- * for refreshable defaults.
+ * preserve a selection when bundles match.
  */
-'permission/preset': { preset: string; origin?: 'default' | 'selection' | 'inferred' }
+'permission/preset': { preset: string }
 ```
 
-Source: [`packages/interaction/permission-presets/src/index.ts:53`](../packages/interaction/permission-presets/src/index.ts)
+Source: [`packages/interaction/permission-presets/src/index.ts:50`](../packages/interaction/permission-presets/src/index.ts)
 
 ### `plan/*`
 

@@ -20,7 +20,7 @@ import { displayPermissionPreset } from './presentation.ts'
 /** Permission's settings namespace on the host wire. */
 export const PERMISSION_SETTINGS_NS = 'permission'
 
-/** One selectable fresh-session and confirmed-reuse default. */
+/** One selectable new-session default. */
 export interface PermissionDefaultOption {
   /** Preset key written to Settings. */
   id: string
@@ -121,8 +121,7 @@ export class PermissionPresetSettingsController {
   }
 
   /**
-   * Persist one preset as the default for fresh sessions and eligible
-   * confirmed blank reuse.
+   * Persist one preset as the default for subsequently created sessions.
    * A selection made while one is already saving is ignored — the row's
    * control is disabled during the save, so this only drops programmatic
    * double-submits rather than user intent.

@@ -329,20 +329,26 @@ export interface Config {
 export interface Config {
   /** Explicit harness home; omitted follows `DSH_HOME`, then `~/.dsh`. */
   dshHome?: string
-  /** Maximum encoded bytes accepted for one image. */
+  /** Maximum encoded bytes accepted for one submitted image. Default: 20 MiB. */
   maxImageBytes?: number
-  /** Maximum image count accepted in one submitted message. */
+  /** Maximum image count accepted in one submitted message. Default: 20. */
   maxImagesPerMessage?: number
-  /** Maximum aggregate encoded image bytes accepted in one submitted message. */
+  /** Maximum aggregate encoded image bytes accepted in one submitted message. Default: 200 MiB. */
   maxMessageImageBytes?: number
-  /** Maximum intrinsic width multiplied by height accepted for one image. */
+  /** Maximum intrinsic width multiplied by height accepted for one submitted image. Default: 64,000,000. */
   maxImagePixels?: number
-  /** Maximum intrinsic width and maximum intrinsic height accepted for one image. */
+  /** Maximum intrinsic width and maximum intrinsic height accepted for one submitted image. Default: 8192px. */
   maxImageDimension?: number
+  /** Long-edge pixel cap of the stored provider-independent normalized image. */
+  normalizedImageMaxDimension?: number
+  /** Encoded-byte safety cap of the stored provider-independent normalized image. */
+  normalizedImageMaxBytes?: number
+  /** Maximum simultaneous normalization or request-image transformations in this service instance. */
+  imageCompressionConcurrency?: number
 }
 ```
 
-来源：[`packages/attachment/attachment-local/src/index.ts:31`](../packages/attachment/attachment-local/src/index.ts)
+来源：[`packages/attachment/attachment-local/src/index.ts:51`](../packages/attachment/attachment-local/src/index.ts)
 
 <a id="deepseek-aidsh-bash-local"></a>
 
@@ -409,7 +415,7 @@ export interface ConnectionConfig {
    * that is not a bare, canonical authority fails the plugin load.
    */
   trustedHosts?: string[]
-  /** Maximum buffered JSON body for every `/api` request. */
+  /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
 }
 ```
@@ -934,8 +940,26 @@ export interface Config {
   models?: DeepSeekCatalogModel[]
   /** Maximum provider idle time while one stream read is outstanding (default five minutes). */
   streamIdleTimeoutMs?: number
-  /** Maximum accumulated base64 image payload per request (default 20 MiB). */
-  maxRequestImageBytes?: number
+  /** Maximum accumulated file-referenced image bytes per chat request (default 128 MiB). */
+  maxRequestFilesBytes?: number
+  /** Maximum accumulated base64 image payload after Files API fallback (default 20 MiB). */
+  maxInlineRequestImageBytes?: number
+  /** Maximum number of represented images per chat request (default 600). */
+  maxImagesPerRequest?: number
+  /** Raw-byte removal step after the request exceeds its file bound (default 64 MiB). */
+  imageOffloadByteQuantum?: number
+  /** Base64-byte removal step after inline fallback exceeds its bound (default 10 MiB). */
+  inlineImageOffloadByteQuantum?: number
+  /** Image-count removal step after the request exceeds its count bound (default 20). */
+  imageOffloadCountQuantum?: number
+  /** Maximum duration of one request-image Files API resolution (default one minute). */
+  filesApiTimeoutMs?: number
+  /** Explicit lifetime assigned to each uploaded image (default seven days). */
+  fileExpiresAfterSeconds?: number
+  /** Remaining lifetime below which an indexed file is replaced (default one hour). */
+  fileRefreshMarginSeconds?: number
+  /** Oldest harness-owned files deleted before one quota-recovery upload retry (default 100). */
+  fileQuotaCleanupBatch?: number
   /** Provider-owned model-request retry policy; omission uses normal mode with five retries. */
   retryPolicy?: RetryPolicyConfig
 }
@@ -954,12 +978,18 @@ export interface DeepSeekCatalogModel {
   maxTokens?: number
   /** Accepted request modalities; omission is text-only. */
   inputModalities?: ModelModality[]
+  /** Total-pixel budget for one deterministic request preview. */
+  imagePixelBudget?: number
+  /** Encoded-byte cap for one deterministic request preview. */
+  imageMaxBytes?: number
+  /** Provider detail tier; `low` uses the 512-by-512 total-pixel default. */
+  imageDetail?: 'auto' | 'low'
 }
 ```
 
 依赖：[`ModelModality`](../packages/llm/llm/src/index.ts) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts)
 
-来源：[`packages/llm/llm-deepseek/src/index.ts:72`](../packages/llm/llm-deepseek/src/index.ts)
+来源：[`packages/llm/llm-deepseek/src/index.ts:106`](../packages/llm/llm-deepseek/src/index.ts)
 
 <a id="deepseek-aidsh-llm-pi-ai"></a>
 
@@ -1061,6 +1091,10 @@ export interface PiAiProviderProfile {
    * requests instead of being rejected by a request-size cap.
    */
   maxRequestImageBytes?: number
+  /** Total-pixel budget for each deterministic inline request version. */
+  requestImagePixelBudget?: number
+  /** Raw encoded-byte cap for each deterministic inline request version. */
+  requestImageMaxBytes?: number
   /** Provider-owned model-request retry policy; omission uses normal mode with five retries. */
   retryPolicy?: RetryPolicyConfig
 }
@@ -1209,7 +1243,7 @@ export type PiAiThinkingFormat = NonNullable<OpenAICompletionsCompat['thinkingFo
 
 依赖：`Api`（`@earendil-works/pi-ai`）· `CacheRetention`（`@earendil-works/pi-ai`）· `Model`（`@earendil-works/pi-ai`）· `ModelThinkingLevel`（`@earendil-works/pi-ai`）· `OpenAICompletionsCompat`（`@earendil-works/pi-ai`）· [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets`（`@earendil-works/pi-ai`）· `Transport`（`@earendil-works/pi-ai`)
 
-来源：[`packages/llm/llm-pi-ai/src/config.ts:201`](../packages/llm/llm-pi-ai/src/config.ts)
+来源：[`packages/llm/llm-pi-ai/src/config.ts:213`](../packages/llm/llm-pi-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 
@@ -1439,9 +1473,8 @@ export interface Config {
    */
   presets?: Record<string, PresetSpec>
   /**
-   * Default for fresh sessions and eligible confirmed blank reuse. When
-   * omitted, the preset matching the composed sandbox and approval defaults
-   * is used.
+   * Default for new sessions. When omitted, the preset matching the composed
+   * sandbox and approval defaults is used.
    */
   defaultPreset?: string
 }
@@ -1461,8 +1494,7 @@ export interface PresetSpec {
 
 依赖：[`ApprovalPolicy`](subsystems/approval.zh.md) · [`SandboxMode`](subsystems/sandbox.zh.md)
 
-来源：[`packages/interaction/permission-presets/src/index.ts:168`](../packages/interaction/permission-presets/src/index.ts)
-
+来源：[`packages/interaction/permission-presets/src/index.ts:156`](../packages/interaction/permission-presets/src/index.ts)
 
 <a id="deepseek-aidsh-persona"></a>
 

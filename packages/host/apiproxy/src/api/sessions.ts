@@ -254,11 +254,6 @@ export interface SessionsApi {
    * session, while a different cwd fails with `session-conflict`. Workspace
    * creation attaches the session after publication; an attach failure
    * returns `workspace-attach-failed` with the published session id.
-   * `reuseWorkspaceBlank: true` is valid only with both `workspaceId` and an
-   * existing `sessionId`; it reports the Web workspace runtime's New Session
-   * reuse candidate. The host notifies optional session-default owners only
-   * while that session is still blank, belongs to the Workspace, matches its
-   * cwd, and is not archived.
    *
    * `agentPreset` names the composition the new session's agent is built
    * from; omitted, the effective default applies — the user's stored choice
@@ -267,13 +262,7 @@ export interface SessionsApi {
    * id fails with `agent-preset-not-found`, and a preset whose composition
    * cannot be mounted fails with `agent-preset-invalid`.
    */
-  create(request: RpcRequest<{
-    workspaceId?: WorkspaceId
-    cwd?: string
-    sessionId?: SessionId
-    agentPreset?: string
-    reuseWorkspaceBlank?: true
-  }>):
+  create(request: RpcRequest<{ workspaceId?: WorkspaceId; cwd?: string; sessionId?: SessionId; agentPreset?: string }>):
   Promise<RpcResponse<{ sessionId: SessionId; agentPreset?: string }>>
 
   /**
