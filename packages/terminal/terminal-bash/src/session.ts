@@ -276,7 +276,7 @@ export class LocalPtySession implements TerminalBackendSession {
     try {
       if (this.active !== operation || this.closing || this.interrupting === operation) return
       operation.setInitialForeground(foreground)
-      const input = `${request.text}${request.submit ? '\r' : ''}`
+      const input = `${request.text}${request.submit ? this.config.submitTerminator : ''}`
       if (input.length > 0 && !operation.cancelRequested) {
         this.resetReadinessEvidence()
         const write = this.terminal.write(input)

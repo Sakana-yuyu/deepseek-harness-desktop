@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Config } from '@deepseek-ai/dsh-terminal-bash/src/config.ts'
-import { resolveConfig, validateConfig } from '@deepseek-ai/dsh-terminal-bash/src/config.ts'
+import { resolveConfig, submitTerminatorFor, validateConfig } from '@deepseek-ai/dsh-terminal-bash/src/config.ts'
 
 function config(overrides: Partial<Config> = {}): Config {
   return {
@@ -33,10 +33,11 @@ describe('terminal-bash config', () => {
 
 describe('terminal-bash dialect resolution', () => {
   it('defaults bash argv to the interactive profile-free form', () => {
-    const { shellPath, shellArgs, shellDialect } = resolveConfig({ backendType: 'shell', rows: 24, cols: 80 })
-    expect(shellDialect).toBe('bash')
-    expect(shellPath).toBe('/bin/bash')
-    expect(shellArgs).toEqual(['--noprofile', '--norc', '-i'])
+    const resolved = resolveConfig({ backendType: 'shell', rows: 24, cols: 80 })
+    expect(resolved.shellDialect).toBe('bash')
+    expect(resolved.shellPath).toBe('/bin/bash')
+    expect(resolved.shellArgs).toEqual(['--noprofile', '--norc', '-i'])
+    expect(resolved.submitTerminator).toBe('\r')
   })
 
   it('defaults pwsh argv to the interactive profile-free form and resolves the executable', () => {
@@ -44,6 +45,14 @@ describe('terminal-bash dialect resolution', () => {
     expect(resolved.shellDialect).toBe('pwsh')
     expect(resolved.shellPath.length).toBeGreaterThan(0)
     expect(resolved.shellArgs).toEqual(['-NoLogo', '-NoProfile'])
+  })
+
+  it('resolves the submit terminator from the line editor that accepts it', () => {
+    expect(submitTerminatorFor('bash', 'linux')).toBe('\r')
+    expect(submitTerminatorFor('bash', 'win32')).toBe('\r')
+    expect(submitTerminatorFor('pwsh', 'win32')).toBe('\r')
+    expect(submitTerminatorFor('pwsh', 'linux')).toBe('\n')
+    expect(submitTerminatorFor('pwsh', 'darwin')).toBe('\n')
   })
 
   it('lets an explicit shell specification win over the dialect defaults', () => {

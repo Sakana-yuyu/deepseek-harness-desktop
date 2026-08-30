@@ -12,7 +12,7 @@ Status: implemented
 
 ## Decision
 
-terminal-bash 的 pwsh 启动引导现在把 PSReadLine 从托管会话中移除（`Remove-Module PSReadLine -ErrorAction SilentlyContinue;`，插在编码前导与 prompt 函数安装之间）。会话从不接收交互式按键——每条命令都是一行提交的物理行、换行转义为 `` `n ``——所以行编辑器没有任何基础回退所不具备的价值：PTY 把这行回显一遍，prompt 函数和 OSC `133;D;` 标记照常触发，sanitizer 的约定不变。
+terminal-bash 的 pwsh 启动引导现在把 PSReadLine 从托管会话中移除（`Remove-Module PSReadLine -ErrorAction SilentlyContinue;`，插在编码前导与 prompt 函数安装之间）。会话从不接收交互式按键——每条命令都是一行提交的物理行、换行转义为 `` `n ``——所以行编辑器没有任何基础回退所不具备的价值：PTY 把这行回显一遍，prompt 函数和 OSC `133;D;` 标记照常触发，sanitizer 的约定不变。回退行编辑器还改变了提交按键：bash 的 readline 和 Windows 控制台行输入都接受回车，而 POSIX 上 pwsh 的基础编辑器只认换行，因此后端按方言解析提交终止符（pwsh 在非 Windows 上为 `\n`，其余为 `\r`）。
 
 作为纵深防御，两个持久工具（`tool-pwsh-persistent`、`tool-bash-persistent`）现在从最后一个 END 标记出现位置向前扫描完成状态，并接受数字两侧的重绘填充空格（`^ *(\d+) *(?=\r?\n)`），即便重绘残渣穿过 sanitizer 也无法再阻断完成检测。回显仍然无法伪造完成：回显中 END 随机数后面跟的是引号字符而不是数字。
 
@@ -28,4 +28,4 @@ terminal-bash 的 pwsh 启动引导现在把 PSReadLine 从托管会话中移除
 
 ## Consequences
 
-托管 pwsh 会话失去了 agent 从不使用的 PSReadLine 能力（交互编辑、Tab 补全、着色回显），换来确定性的单遍回显：scrollback 里只有回显行加真实输出，命令完成不再依赖重绘时序，捕获的输出不再携带渲染器残渣。真实交互终端不应也不会接到同一后端——terminal 接口只面向 agent 托管。若未来 pwsh 不再让 `Remove-Module` 在会话中途生效，症状会以修复前的超时形态回归，放宽的状态正则只能拖延；启动引导串是唯一需要重新审视的地方。
+托管 pwsh 会话失去了 agent 从不使用的 PSReadLine 能力（交互编辑、Tab 补全、着色回显），换来确定性的单遍回显：scrollback 里只有回显行加真实输出，命令完成不再依赖重绘时序，捕获的输出不再携带渲染器残渣。提交终止符现在按方言与平台解析，未来的 shell 方言必须显式声明自己的终止符，而不是继承 `\r`。真实交互终端不应也不会接到同一后端——terminal 接口只面向 agent 托管。若未来 pwsh 不再让 `Remove-Module` 在会话中途生效，症状会以修复前的超时形态回归，放宽的状态正则只能拖延；启动引导串是唯一需要重新审视的地方。

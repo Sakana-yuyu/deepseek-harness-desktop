@@ -48,6 +48,8 @@ export type ResolvedConfig = Omit<Required<Config>, 'shellDialect' | 'shellPath'
   shellDialect: ShellDialect
   shellPath: string
   shellArgs: string[]
+  /** Line terminator appended to a submitted send, resolved per dialect and host. */
+  submitTerminator: '\r' | '\n'
 }
 
 /** Bash dialect default executable. */
@@ -77,7 +79,22 @@ export function resolveConfig(config: Config): ResolvedConfig {
     shellArgs: config.shellArgs !== undefined && config.shellArgs.length > 0
       ? config.shellArgs
       : (shellDialect === 'pwsh' ? DEFAULT_PWSH_ARGS : DEFAULT_BASH_ARGS),
+    submitTerminator: submitTerminatorFor(shellDialect),
   }
+}
+
+/**
+ * Resolve the terminator appended to a submitted send. The line editor that
+ * accepts the submission differs by dialect and host: bash's readline and the
+ * Windows console line input both submit on carriage return, while POSIX
+ * pwsh's basic line editor — the fallback once the bootstrap removes
+ * PSReadLine — submits on newline only.
+ * @param shellDialect - the resolved shell dialect.
+ * @param platform - the platform to resolve for; defaults to the process platform.
+ * @returns the terminator that commits one submitted line.
+ */
+export function submitTerminatorFor(shellDialect: ShellDialect, platform: NodeJS.Platform = process.platform): '\r' | '\n' {
+  return shellDialect === 'pwsh' && platform !== 'win32' ? '\n' : '\r'
 }
 
 /** Schemastery config exposed by the plugin. */

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-30-pwsh-terminal-psreadline-removal.md
-2026-08-30-pwsh-terminal-psreadline-removal.md: 2ab7c74c1531ee40d6f133daf7a399c64ec971c7
-2026-08-30-pwsh-terminal-psreadline-removal.zh.md: 345599d248853c234c05711b192121185c347461
+2026-08-30-pwsh-terminal-psreadline-removal.md: 92f09f264aaf2730c21c9f0b89645dbee97b231c
+2026-08-30-pwsh-terminal-psreadline-removal.zh.md: e9bf3e1ca68ce6c000dda4fadb273fee4213ccc8

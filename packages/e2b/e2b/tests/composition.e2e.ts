@@ -101,7 +101,7 @@ describe.skipIf(!process.env.E2B_API_KEY)('E2B live Loader composition', () => {
         rows: 24, cols: 80,
         scrollbackLines: 100, scrollbackMaxBytes: 65_536, maxReadBytes: 16_384,
         pollIntervalMs: 25, exactProbeAfterMs: 150, idleSilenceMs: 1_000,
-        handoffGraceMs: 500, timeoutMs: 5_000, disposeGraceMs: 1_000,
+        handoffGraceMs: 500, timeoutMs: 5_000, disposeGraceMs: 1_000, submitTerminator: '\r',
       })
       const session = await backend.spawn({ sessionId: TerminalSessionId('env'), owner, type: 'shell' })
       const result = await session.startSend({
