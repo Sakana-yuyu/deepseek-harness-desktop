@@ -122,6 +122,13 @@ function spawnArgv(ctx: Context, config: ResolvedConfig, policy: SandboxExecutio
 // TODO(pty-initialize-race-home): Fold this outer abort race into
 // LocalPtySession.initialize when the send-state consolidation lands; the
 // session already owns the send lifecycle the race protects.
+// The pwsh startup loop must not mistake the echoed bootstrap for the real
+// prompt: the echoed source carries the prompt literal mid-line (inside
+// quotes), while a rendered prompt owns its line — line-start anchored and
+// alone on it. Accepting the echo lets the loop return before the shell's
+// line editor exists, so early sends sit unread and settle on silence.
+const REAL_PROMPT_PATTERN = new RegExp(`(^|\\n)${CONTROLLED_PROMPT}(\\n|$)`)
+
 async function startupSession(
   session: LocalPtySession,
   dialect: ShellDialect,
@@ -156,7 +163,7 @@ async function startupSession(
       if (result.waitReason === 'timeout') throw new Error('PTY shell did not reach readiness before startup timeout')
       viewport = result.viewport
       const scrollback = session.read({ offset: 0, count: 20 }).text
-      if (viewport.includes(CONTROLLED_PROMPT) || scrollback.includes(CONTROLLED_PROMPT)) break
+      if (REAL_PROMPT_PATTERN.test(viewport) || REAL_PROMPT_PATTERN.test(scrollback)) break
     }
     session.motd = viewport
   }
