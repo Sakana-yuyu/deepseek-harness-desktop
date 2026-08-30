@@ -104,7 +104,7 @@ export class TerminalSanitizer {
           index = escape
           break
         }
-        const content = this.pending.slice(escape + 2, end)
+        const content = this.pending.slice(escape + 2, end + 1)
         if (content === '6n' || content === '?6n') cursorQuery = true
         index = end + 1
         continue
