@@ -89,6 +89,17 @@ function childEnvironment(spec: TerminalBackendSpawnSpec, dialect: ShellDialect)
 export const PWSH_PROMPT_SETUP =
   "function prompt { [Console]::Write([char]27 + ']133;D;' + [int]$LASTEXITCODE + [char]7); '" + CONTROLLED_PROMPT + "' }"
 
+/**
+ * Removes PSReadLine from the hosted pwsh session. The session never receives
+ * interactive keystrokes (every command is one submitted physical line), so
+ * the line editor contributes no value while its renderer poisons the
+ * append-only scrollback: multi-pass syntax-highlight echo, prompt re-renders,
+ * and redraw loops that can flood the bounded scrollback outright. The basic
+ * line editor echoes once through the PTY and keeps the prompt function and
+ * OSC marker contract intact.
+ */
+export const PWSH_DISABLE_PSREADLINE = 'Remove-Module PSReadLine -ErrorAction SilentlyContinue; '
+
 function spawnArgv(ctx: Context, config: ResolvedConfig, policy: SandboxExecutionPolicy): string[] {
   const argv = [config.shellPath, ...config.shellArgs]
   if (policy.mode === 'danger-full-access') return argv
@@ -127,7 +138,7 @@ async function startupSession(
     for (;;) {
       const first = viewport.length === 0
       const operation = session.startSend({
-        text: first ? ENCODING_PREAMBLE + PWSH_PROMPT_SETUP : '',
+        text: first ? ENCODING_PREAMBLE + PWSH_DISABLE_PSREADLINE + PWSH_PROMPT_SETUP : '',
         submit: first,
         ...signal !== undefined ? { signal } : {},
       })

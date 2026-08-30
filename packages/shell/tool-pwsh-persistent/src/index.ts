@@ -74,7 +74,8 @@ function markers(): CommandMarkers {
  * Backtick escapes keep every character literal: backtick first so the
  * escapes this function inserts are never re-escaped, `$` so no expansion
  * happens at wrapper construction, and `\r\n`/ESC so multi-line commands and
- * raw control bytes ride one physical input line without PSReadLine mangling.
+ * raw control bytes ride one physical input line and a literal newline can
+ * never terminate the submitted line early.
  * @param value - the model's PowerShell command text.
  * @returns the escaped double-quoted-string body.
  */
@@ -89,7 +90,7 @@ function quoteForPwsh(value: string): string {
 }
 
 function wrapCommand(command: string, marker: CommandMarkers): string {
-  // Keep the wrapper on one physical line: PSReadLine renders the echoed
+  // Keep the wrapper on one physical line: the terminal echoes the submitted
   // input, and a wrapped line would split the echo the extraction strips.
   // The echoed END nonce can never fabricate completion because the status
   // regex needs digits immediately after it and the echo continues with
@@ -112,22 +113,32 @@ function commandOutput(
   wrapper: string,
 ): CapturedOutput | undefined {
   const text = snapshot.text
-  const end = text.lastIndexOf(marker.end)
-  const status = /^(\d+)\r?\n/.exec(text.slice(end + marker.end.length))?.[1]
-  if (status === undefined) return undefined
-  const startMarker = text.lastIndexOf(marker.start, end)
-  const start = startMarker < 0 ? 0 : startMarker + marker.start.length
-  let captured = text.slice(start, end)
-  // The PSReadLine echo carries the wrapper source (including both marker
-  // nonces) before the real markers; anchor on the real markers excludes it,
-  // and stripping the wrapper covers the rare case where the real START
-  // scrolled out and extraction fell back to the echoed copy.
-  captured = captured.replaceAll(wrapper, '')
-  return {
-    text: captured.replace(/^\r?\n/, '').replace(/\r?\n$/, ''),
-    incomplete: startMarker < 0,
-    exitCode: Number(status),
+  // Scan END-marker occurrences from the last toward the first: terminal
+  // repaint can re-emit marker text after the real completion line, and the
+  // completion status may carry repaint padding before its line break. The
+  // echo can never fabricate completion because its END nonce continues with
+  // a quote character instead of status digits.
+  let end = text.lastIndexOf(marker.end)
+  while (end >= 0) {
+    const status = /^ *(\d+) *(?=\r?\n)/.exec(text.slice(end + marker.end.length))?.[1]
+    if (status !== undefined) {
+      const startMarker = text.lastIndexOf(marker.start, end)
+      const start = startMarker < 0 ? 0 : startMarker + marker.start.length
+      let captured = text.slice(start, end)
+      // The echo carries the wrapper source (including both marker nonces)
+      // before the real markers; anchor on the real markers excludes it, and
+      // stripping the wrapper covers the rare case where the real START
+      // scrolled out and extraction fell back to the echoed copy.
+      captured = captured.replaceAll(wrapper, '')
+      return {
+        text: captured.replace(/^\r?\n/, '').replace(/\r?\n$/, ''),
+        incomplete: startMarker < 0,
+        exitCode: Number(status),
+      }
+    }
+    end = end > 0 ? text.lastIndexOf(marker.end, end - 1) : -1
   }
+  return undefined
 }
 
 function promptCompleted(result: TerminalSendResult): boolean {

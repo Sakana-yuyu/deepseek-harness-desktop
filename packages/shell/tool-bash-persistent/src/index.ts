@@ -90,16 +90,26 @@ function commandOutput(
   marker: CommandMarkers,
 ): CapturedOutput | undefined {
   const text = snapshot.text
-  const end = text.lastIndexOf(marker.end)
-  const status = /^(\d+)\r?\n/.exec(text.slice(end + marker.end.length))?.[1]
-  if (status === undefined) return undefined
-  const startMarker = text.lastIndexOf(marker.start, end)
-  const start = startMarker < 0 ? 0 : startMarker + marker.start.length
-  return {
-    text: trimTrailingNewline(text.slice(start, end).replace(/^\r?\n/, '')),
-    incomplete: startMarker < 0,
-    exitCode: Number(status),
+  // Scan END-marker occurrences from the last toward the first: terminal
+  // repaint can re-emit marker text after the real completion line, and the
+  // completion status may carry repaint padding before its line break. The
+  // echo can never fabricate completion because its END nonce continues with
+  // a quote character instead of status digits.
+  let end = text.lastIndexOf(marker.end)
+  while (end >= 0) {
+    const status = /^ *(\d+) *(?=\r?\n)/.exec(text.slice(end + marker.end.length))?.[1]
+    if (status !== undefined) {
+      const startMarker = text.lastIndexOf(marker.start, end)
+      const start = startMarker < 0 ? 0 : startMarker + marker.start.length
+      return {
+        text: trimTrailingNewline(text.slice(start, end).replace(/^\r?\n/, '')),
+        incomplete: startMarker < 0,
+        exitCode: Number(status),
+      }
+    }
+    end = end > 0 ? text.lastIndexOf(marker.end, end - 1) : -1
   }
+  return undefined
 }
 
 function partialOutput(
