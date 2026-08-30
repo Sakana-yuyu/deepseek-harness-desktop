@@ -178,6 +178,9 @@ export class LocalPtySession implements TerminalBackendSession {
   private promptSeen = false
   private promptTextSeen = false
   private promptTail = ''
+  // Sticky by design: startup readiness only needs to know that the real
+  // prompt rendered once, while promptTextSeen resets with every send.
+  private controlledPromptSeen = false
   private shellPgid: number | undefined
   private initializing = false
   private lastOutputAt = Date.now()
@@ -398,7 +401,17 @@ export class LocalPtySession implements TerminalBackendSession {
       this.promptTail += sanitized.promptTail.slice(0, remaining)
       if (sanitized.promptTail.length > remaining) this.promptTail = `${CONTROLLED_PROMPT}\0`
       this.promptTextSeen = this.promptTail === CONTROLLED_PROMPT
+      if (this.promptTextSeen) this.controlledPromptSeen = true
     }
+  }
+
+  /**
+   * Whether the controlled prompt text followed an owned marker at least once.
+   * Unlike `promptTextSeen` this never resets, so callers waiting for the
+   * shell's first real readiness can rely on it across later sends.
+   */
+  get controlledPromptRendered(): boolean {
+    return this.controlledPromptSeen
   }
 
   private async onExit(outcome: SubprocessOutcome): Promise<void> {

@@ -229,6 +229,19 @@ describe('LocalPtySession readiness and output', () => {
     expect(session.read({ offset: 0, count: 100 }).text).not.toContain('\x1b[6n')
   })
 
+  it('keeps the controlled-prompt flag sticky across subsequent sends', async () => {
+    vi.useFakeTimers()
+    const terminal = new FakeTerminal()
+    const session = makeSession(terminal, new FakeInspector(), config())
+    expect(session.controlledPromptRendered).toBe(false)
+    await initialize(session, terminal)
+    expect(session.controlledPromptRendered).toBe(true)
+
+    // A later send resets per-send prompt evidence; the sticky startup flag survives it.
+    session.startSend({ text: '', submit: false })
+    expect(session.controlledPromptRendered).toBe(true)
+  })
+
   it('does not reuse a pre-write stdin wait as post-write readiness', async () => {
     vi.useFakeTimers()
     const terminal = new FakeTerminal()

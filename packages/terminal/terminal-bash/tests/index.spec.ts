@@ -350,6 +350,7 @@ describe('BashTerminalBackend startup rollback', () => {
     let sent: TerminalSendRequest | undefined
     const session = {
       motd: '',
+      get controlledPromptRendered() { return true },
       startSend: (request: TerminalSendRequest) => {
         sent = request
         return {
@@ -390,6 +391,7 @@ describe('BashTerminalBackend startup rollback', () => {
     const sends: TerminalSendRequest[] = []
     const session = {
       motd: '',
+      get controlledPromptRendered() { return sends.length > 1 },
       startSend: (request: TerminalSendRequest) => {
         sends.push(request)
         const second = sends.length > 1
@@ -446,6 +448,7 @@ describe('BashTerminalBackend startup rollback', () => {
     const sends: TerminalSendRequest[] = []
     const session = {
       motd: '',
+      get controlledPromptRendered() { return true },
       startSend: (request: TerminalSendRequest) => {
         sends.push(request)
         return {
