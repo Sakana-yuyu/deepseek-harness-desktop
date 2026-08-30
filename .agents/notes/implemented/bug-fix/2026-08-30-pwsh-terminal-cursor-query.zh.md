@@ -14,6 +14,8 @@ Windows 侧原有的失败是另一类残渣问题：conpty 把 PSReadLine 的�
 
 终端层现在应答光标位置查询。sanitizer 识别 `ESC[6n` 与 `ESC[?6n`（包括跨 chunk 拆开的序列），在净化结果上打标记，session 向终端写回 `ESC[1;1R`——左上角原点位置。任何合法应答都能解除编辑器的阻塞；面向行的 scrollback 不关心渲染布局。应答写入 shell 的输入侧，被当作查询答案消费，绝不会变成命令文本。
 
+pwsh 启动等待也必须随之修改。在 scrollback 文本里匹配渲染后的提示符是行不通的：POSIX PSReadLine 用光标寻位而不是换行来摆放提示符，提示符文本永远不会出现在行首，而被回显的引导命令却在行中携带同样的字面量。session 自己的追踪——自有 `133;D` 标记后跟受控提示符文本——是唯一不受回显干扰的信号，现在以粘性的 `controlledPromptRendered` 标志暴露，启动等待以它为准。
+
 Windows 上 pwsh 启动引导保留对 PSReadLine 的移除（`Remove-Module PSReadLine`，插在编码前导与 prompt 函数安装之间）：conpty 重绘残渣是 Windows 协议层的产物，移除从源头消灭它，且 Windows 控制台行输入在没有 PSReadLine 时工作正常。POSIX 保留 PSReadLine——查询得到应答后它的渲染在 POSIX 上是单遍的，而无 PSReadLine 的回退编辑器被证实无法在 PTY 上使用（会话退化为一条回显的引导行加一个从不消费输入的默认提示符）。
 
 作为纵深防御，两个持久工具（`tool-pwsh-persistent`、`tool-bash-persistent`）从最后一个 END 标记出现位置向前扫描完成状态，并接受数字两侧的重绘填充空格（`^ *(\d+) *(?=\r?\n)`），即便残渣穿过净化层也无法阻断完成检测。回显仍然无法伪造完成：回显中 END 随机数后面跟的是引号字符而不是数字。
