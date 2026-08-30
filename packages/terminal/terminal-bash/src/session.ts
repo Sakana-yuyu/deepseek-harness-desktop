@@ -21,7 +21,7 @@ import type {
   TerminalWaitReason,
 } from '@deepseek-ai/dsh-terminal'
 import type { ResolvedConfig } from './config.ts'
-import { CONTROLLED_PROMPT, TerminalSanitizer } from './sanitize.ts'
+import { CURSOR_POSITION_REPORT, CONTROLLED_PROMPT, TerminalSanitizer } from './sanitize.ts'
 
 function utf8Tail(text: string, maxBytes: number): { text: string; truncated: boolean } {
   if (Buffer.byteLength(text) <= maxBytes) return { text, truncated: false }
@@ -276,7 +276,7 @@ export class LocalPtySession implements TerminalBackendSession {
     try {
       if (this.active !== operation || this.closing || this.interrupting === operation) return
       operation.setInitialForeground(foreground)
-      const input = `${request.text}${request.submit ? this.config.submitTerminator : ''}`
+      const input = `${request.text}${request.submit ? '\r' : ''}`
       if (input.length > 0 && !operation.cancelRequested) {
         this.resetReadinessEvidence()
         const write = this.terminal.write(input)
@@ -380,6 +380,9 @@ export class LocalPtySession implements TerminalBackendSession {
   private onData(data: string): void {
     const sanitized = this.sanitizer.push(data)
     this.appendOutput(sanitized.text)
+    // A shell-side cursor query blocks its line editor until answered; a
+    // hosted PTY has no emulator, so the session plays that role itself.
+    if (sanitized.cursorQuery === true) this.terminal.write(CURSOR_POSITION_REPORT)
     if (sanitized.prompt) {
       // TODO(pty-delayed-signal-prompt): With a reproducer, define a marker-generation boundary
       // before attributing a signal-delayed prompt to a later send.

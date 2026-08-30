@@ -90,15 +90,23 @@ export const PWSH_PROMPT_SETUP =
   "function prompt { [Console]::Write([char]27 + ']133;D;' + [int]$LASTEXITCODE + [char]7); '" + CONTROLLED_PROMPT + "' }"
 
 /**
- * Removes PSReadLine from the hosted pwsh session. The session never receives
- * interactive keystrokes (every command is one submitted physical line), so
- * the line editor contributes no value while its renderer poisons the
- * append-only scrollback: multi-pass syntax-highlight echo, prompt re-renders,
- * and redraw loops that can flood the bounded scrollback outright. The basic
- * line editor echoes once through the PTY and keeps the prompt function and
- * OSC marker contract intact.
+ * Removes PSReadLine from the hosted pwsh session on Windows. ConPTY
+ * re-serializes PSReadLine's multi-pass syntax-highlight rendering into the
+ * output stream as erase sequences and literal space runs, and the
+ * append-only sanitized scrollback keeps that residue beside real command
+ * output. POSIX keeps PSReadLine: its renderer is single-pass there, and the
+ * no-PSReadLine fallback editor is not PTY-safe.
  */
 export const PWSH_DISABLE_PSREADLINE = 'Remove-Module PSReadLine -ErrorAction SilentlyContinue; '
+
+/**
+ * The bootstrap line installed as the pwsh session's first submitted command.
+ * @param platform - the host platform; PSReadLine removal is Windows-only.
+ * @returns the full bootstrap expression.
+ */
+export function pwshBootstrap(platform: NodeJS.Platform): string {
+  return ENCODING_PREAMBLE + (platform === 'win32' ? PWSH_DISABLE_PSREADLINE : '') + PWSH_PROMPT_SETUP
+}
 
 function spawnArgv(ctx: Context, config: ResolvedConfig, policy: SandboxExecutionPolicy): string[] {
   const argv = [config.shellPath, ...config.shellArgs]
@@ -117,6 +125,7 @@ function spawnArgv(ctx: Context, config: ResolvedConfig, policy: SandboxExecutio
 async function startupSession(
   session: LocalPtySession,
   dialect: ShellDialect,
+  platform: NodeJS.Platform,
   signal?: AbortSignal,
 ): Promise<void> {
   const start = async (): Promise<void> => {
@@ -138,7 +147,7 @@ async function startupSession(
     for (;;) {
       const first = viewport.length === 0
       const operation = session.startSend({
-        text: first ? ENCODING_PREAMBLE + PWSH_DISABLE_PSREADLINE + PWSH_PROMPT_SETUP : '',
+        text: first ? pwshBootstrap(platform) : '',
         submit: first,
         ...signal !== undefined ? { signal } : {},
       })
@@ -180,6 +189,7 @@ export class BashTerminalBackend implements TerminalBackend {
       terminal: SubprocessTerminalHandle,
       config: ResolvedConfig,
     ) => LocalPtySession = (terminal, config) => new LocalPtySession(terminal, config),
+    private readonly platform: NodeJS.Platform = process.platform,
   ) {
     this.type = config.backendType
   }
@@ -201,7 +211,7 @@ export class BashTerminalBackend implements TerminalBackend {
     })
     const session = this.createSession(terminal, this.config)
     try {
-      await startupSession(session, this.config.shellDialect, spec.signal)
+      await startupSession(session, this.config.shellDialect, this.platform, spec.signal)
       return session
     } catch (error) {
       try {

@@ -133,7 +133,7 @@ function config(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     backendType: 'shell', shellDialect: 'bash', shellPath: '/bin/bash', shellArgs: [], rows: 24, cols: 80,
     scrollbackLines: 10, scrollbackMaxBytes: 128, maxReadBytes: 64,
     pollIntervalMs: 10, exactProbeAfterMs: 20, idleSilenceMs: 50, handoffGraceMs: 10, timeoutMs: 100,
-    disposeGraceMs: 20, submitTerminator: '\r',
+    disposeGraceMs: 20,
     ...overrides,
   }
 }
@@ -214,6 +214,19 @@ describe('LocalPtySession readiness and output', () => {
     await vi.advanceTimersByTimeAsync(20)
     expect(await operation.done).toMatchObject({ waitReason: 'stdin_read', viewport: 'Python\n>>> ', sessionStatus: { kind: 'running' } })
     expect(operation.cancel()).toBe(false)
+  })
+
+  it('answers a shell cursor-position query by writing the report into the terminal', async () => {
+    vi.useFakeTimers()
+    const terminal = new FakeTerminal()
+    const inspector = new FakeInspector()
+    const session = makeSession(terminal, inspector, config())
+    await initialize(session, terminal)
+    const writesBeforeQuery = terminal.writes.length
+
+    terminal.emitData('booting\x1b[6nstill streaming')
+    expect(terminal.writes.slice(writesBeforeQuery)).toEqual(['\x1b[1;1R'])
+    expect(session.read({ offset: 0, count: 100 }).text).not.toContain('\x1b[6n')
   })
 
   it('does not reuse a pre-write stdin wait as post-write readiness', async () => {

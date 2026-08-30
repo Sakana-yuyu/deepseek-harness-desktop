@@ -43,7 +43,7 @@ function config(): ResolvedConfig {
     backendType: 'shell', shellDialect: 'bash', shellPath: '/bin/bash', shellArgs: [], rows: 24, cols: 80,
     scrollbackLines: 10, scrollbackMaxBytes: 100, maxReadBytes: 50,
     pollIntervalMs: 10, exactProbeAfterMs: 20, idleSilenceMs: 50, handoffGraceMs: 10, timeoutMs: 100,
-    disposeGraceMs: 10, submitTerminator: '\r',
+    disposeGraceMs: 10,
   }
 }
 
@@ -363,14 +363,18 @@ describe('BashTerminalBackend startup rollback', () => {
       },
       read: () => ({ text: '', totalLines: 0, lineBegin: 0, lineEnd: 0, truncated: false }),
     } as unknown as LocalPtySession
-    const backend = new BashTerminalBackend(
+    const buildBackend = (platform: NodeJS.Platform): BashTerminalBackend => new BashTerminalBackend(
       ctx,
       { ...config(), shellDialect: 'pwsh', shellPath: 'pwsh' },
       async (spec) => { spawned = spec; return terminalHandle() },
       () => session,
+      platform,
     )
-    expect(await backend.spawn(spec(agent(ctx)))).toBe(session)
+    expect(await buildBackend('win32').spawn(spec(agent(ctx)))).toBe(session)
     expect(sent).toMatchObject({ text: ENCODING_PREAMBLE + PWSH_DISABLE_PSREADLINE + PWSH_PROMPT_SETUP, submit: true })
+    sent = undefined
+    expect(await buildBackend('darwin').spawn(spec(agent(ctx)))).toBe(session)
+    expect(sent).toMatchObject({ text: ENCODING_PREAMBLE + PWSH_PROMPT_SETUP, submit: true })
     expect(session.motd).toBe('setup-echo dsh> ')
     expect(spawned?.env).toMatchObject({
       TERM: 'dumb', NO_COLOR: '1', DSH_SHELL: '1', DSH_SESSION_ID: 'agent', DSH_PTY_SESSION_ID: 'pty-1',

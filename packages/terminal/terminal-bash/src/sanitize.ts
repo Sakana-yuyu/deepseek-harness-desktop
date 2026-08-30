@@ -8,12 +8,23 @@ export const PROMPT_MARKER_PREFIX = '133;D;'
 /** Exact printable prompt emitted after the private marker. */
 export const CONTROLLED_PROMPT = 'dsh> '
 
+/**
+ * Report written back into the PTY when the shell asks for the cursor
+ * position. pwsh 7.6 emits `ESC[6n` during line-editor startup and blocks on
+ * the answer; a hosted PTY has no emulator to respond, so the session answers
+ * with the top-left home position to unblock it. Rendering layout does not
+ * matter to the line-oriented scrollback.
+ */
+export const CURSOR_POSITION_REPORT = '\x1b[1;1R'
+
 /** One sanitized chunk plus whether it contained the owned prompt marker. */
 export interface SanitizedChunk {
   text: string
   prompt: boolean
   /** Printable text after the latest owned marker in this chunk. */
   promptTail?: string
+  /** The shell issued a cursor-position query that must be answered. */
+  cursorQuery?: boolean
 }
 
 /**
@@ -39,6 +50,7 @@ export class TerminalSanitizer {
     this.pending += this.discardPrefix(chunk)
     let text = ''
     let prompt = false
+    let cursorQuery = false
     let includePromptTail = this.trackingPromptTail
     let promptTail = ''
     let index = 0
@@ -92,6 +104,8 @@ export class TerminalSanitizer {
           index = escape
           break
         }
+        const content = this.pending.slice(escape + 2, end)
+        if (content === '6n' || content === '?6n') cursorQuery = true
         index = end + 1
         continue
       }
@@ -104,6 +118,7 @@ export class TerminalSanitizer {
       text: this.normalizeText(text),
       prompt,
       ...includePromptTail ? { promptTail } : {},
+      ...cursorQuery ? { cursorQuery: true } : {},
     }
   }
 

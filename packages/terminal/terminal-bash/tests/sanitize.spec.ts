@@ -39,6 +39,16 @@ describe('TerminalSanitizer', () => {
     expect(sanitizer.push('dsh> ')).toEqual({ text: 'dsh> ', prompt: false, promptTail: 'dsh> ' })
   })
 
+  it('flags cursor-position queries for the session to answer and strips them from text', () => {
+    const sanitizer = new TerminalSanitizer(64)
+    expect(sanitizer.push('ready\x1b[6n')).toEqual({ text: 'ready', prompt: false, cursorQuery: true })
+    expect(sanitizer.push('dec\x1b[?6ncolumns')).toEqual({ text: 'deccolumns', prompt: false, cursorQuery: true })
+    expect(sanitizer.push('\x1b[2J')).toEqual({ text: '', prompt: false })
+    const split = new TerminalSanitizer(64)
+    expect(split.push('\x1b[6')).toEqual({ text: '', prompt: false })
+    expect(split.push('n')).toEqual({ text: '', prompt: false, cursorQuery: true })
+  })
+
   it('bounds and discards unterminated control sequences through their terminators', () => {
     const oscBel = new TerminalSanitizer(8)
     expect(oscBel.push(`\x1b]0;${'x'.repeat(16)}`)).toEqual({ text: '', prompt: false })
