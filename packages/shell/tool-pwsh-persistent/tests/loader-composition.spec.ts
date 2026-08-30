@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -73,6 +73,10 @@ function text(result: { content: { type: string; text?: string }[] }): string {
 describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader composition', () => {
   it('preserves cwd and environment across calls', async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-persistent-pwsh-loader-'))
+    // pwsh reports $PWD through the resolved filesystem path, and on macOS the
+    // per-user temp directory sits under the /private symlink prefix; compare
+    // against the same canonical form.
+    root = await realpath(root)
     const configPath = join(root, 'cordis.yml')
     await writeFile(configPath, [
       "- name: '@deepseek-ai/dsh-agent'",
