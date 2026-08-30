@@ -1,4 +1,4 @@
-# DeepSeek Harness Desktop 0.1.1-rc.2-0.1
+# DeepSeek Harness Desktop 0.1.1-rc.2-0.2
 
 ## English
 
@@ -8,9 +8,9 @@ The installer contains a trimmed Harness source tree without `node_modules`. On 
 
 ### What's new
 
-- Refreshes the bundled Harness source to upstream `dsh@0.1.1-rc.2`, led by the unified image request pipeline: attachments are stored as a deterministic canonical encoding before upload, `read_image` reports downscaled dimensions and the coordinate scale to read back, and wide images are accepted within the canonical budget.
-- Vision requests are more resilient: when DeepSeek Files resolution fails, images fall back to inline payloads, file uploads and streaming use independent timeouts, and opaque WebP files that omit the alpha channel are accepted.
-- Keeps the desktop provisioning guarantees shipped in 0.1.1-rc.1-0.2: launches reuse the provisioned Node and dependency store instead of reseeding the harness tree.
+- Fixes the `pwsh` tool on current PowerShell releases (7.6.x): pwsh's line editor now asks for the terminal cursor position during startup, and a hosted terminal has no emulator to answer, so sessions never came up and every command timed out. The terminal layer now answers the cursor query, pwsh startup waits for the marker-gated rendered prompt, and commands execute normally on every host.
+- Windows sessions additionally run PSReadLine-free, which stops conpty repaint residue from polluting command output, and the persistent tools tolerate residual padding when reading command completion.
+- Bundled Harness source stays on upstream `dsh@0.1.1-rc.2` with this terminal fix applied on top.
 
 ### Included builds
 
@@ -28,9 +28,9 @@ DeepSeek Harness Desktop 是现有 `dsh web` 界面的 Tauri/WebView 外壳。
 
 ### 更新内容
 
-- 内置 Harness 源码更新至上游 `dsh@0.1.1-rc.2`，核心是统一的图片请求管线：附件在上传前存储为确定性的规范编码，`read_image` 会报告缩放后的尺寸与读回应使用的坐标比例，宽图在规范预算内被接受。
-- 视觉请求更可靠：DeepSeek Files 解析失败时图片回退为内联载荷，文件上传与流式传输使用独立超时，接受省略 alpha 通道的不透明 WebP。
-- 保留 0.1.1-rc.1-0.2 带来的桌面预配保障：启动时复用已预配的 Node 与依赖存储，不再重新播种 harness 树。
+- 修复当前 PowerShell 版本（7.6.x）上的 `pwsh` 工具：pwsh 的行编辑器现在会在启动时查询终端光标位置，而托管终端背后没有模拟器应答，导致会话永远起不来、每条命令都超时。终端层现在会应答光标查询，pwsh 启动等待以标记门控的渲染提示符为准，命令在所有主机上恢复正常执行。
+- Windows 会话额外运行在无 PSReadLine 状态，避免 conpty 重绘残渣污染命令输出；持久工具在读取命令完成状态时也能容忍残余填充。
+- 内置 Harness 源码保持在上游 `dsh@0.1.1-rc.2`，叠加本次终端修复。
 
 ### 包含的构建
 
