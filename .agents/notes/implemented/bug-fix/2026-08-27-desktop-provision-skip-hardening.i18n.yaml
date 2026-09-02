@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-27-desktop-provision-skip-hardening.md
-2026-08-27-desktop-provision-skip-hardening.md: 48539fecd9e1f07af04614c5d72dd8143393e05c
-2026-08-27-desktop-provision-skip-hardening.zh.md: 59427da4086d4341e5e427f3e4e1739c41a361a2
+2026-08-27-desktop-provision-skip-hardening.md: 2e058154ca9cda61cba61dfa70c0540bd8702996
+2026-08-27-desktop-provision-skip-hardening.zh.md: 7fe4673a7876db3a7ee776eb4de66ad31f5cc50b
