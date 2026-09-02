@@ -1,4 +1,4 @@
-# DeepSeek Harness Desktop 0.1.1-rc.2-0.2
+# DeepSeek Harness Desktop 0.1.1-rc.2-0.3
 
 ## English
 
@@ -8,9 +8,10 @@ The installer contains a trimmed Harness source tree without `node_modules`. On 
 
 ### What's new
 
-- Fixes the `pwsh` tool on current PowerShell releases (7.6.x): pwsh's line editor now asks for the terminal cursor position during startup, and a hosted terminal has no emulator to answer, so sessions never came up and every command timed out. The terminal layer now answers the cursor query, pwsh startup waits for the marker-gated rendered prompt, and commands execute normally on every host.
-- Windows sessions additionally run PSReadLine-free, which stops conpty repaint residue from polluting command output, and the persistent tools tolerate residual padding when reading command completion.
-- Bundled Harness source stays on upstream `dsh@0.1.1-rc.2` with this terminal fix applied on top.
+- Fixes a rare but self-locking startup failure (observed in the wild as `ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/dsh-app-boot'`): an interrupted first-run dependency install could be recorded as completed, so every later launch booted a half-installed Harness tree and the splash showed "启动失败" until the cache was deleted by hand.
+- Provisioning reuse now requires pnpm's end-of-install completion marker (`node_modules/.modules.yaml`) alongside the `.pnpm` store, an install failure without the marker fails loudly into recovery, and the same marker gates the WSL provisioning skip.
+- When the web host dies naming an unresolvable dependency, the desktop shell now wipes and re-provisions the harness tree once within the same launch instead of surfacing the Node stack — no manual cache deletion.
+- Bundled Harness source stays on upstream `dsh@0.1.1-rc.2` with this desktop fix applied on top.
 
 ### Included builds
 
@@ -28,9 +29,10 @@ DeepSeek Harness Desktop 是现有 `dsh web` 界面的 Tauri/WebView 外壳。
 
 ### 更新内容
 
-- 修复当前 PowerShell 版本（7.6.x）上的 `pwsh` 工具：pwsh 的行编辑器现在会在启动时查询终端光标位置，而托管终端背后没有模拟器应答，导致会话永远起不来、每条命令都超时。终端层现在会应答光标查询，pwsh 启动等待以标记门控的渲染提示符为准，命令在所有主机上恢复正常执行。
-- Windows 会话额外运行在无 PSReadLine 状态，避免 conpty 重绘残渣污染命令输出；持久工具在读取命令完成状态时也能容忍残余填充。
-- 内置 Harness 源码保持在上游 `dsh@0.1.1-rc.2`，叠加本次终端修复。
+- 修复一个罕见但会自锁的启动失败（现实中表现为 `ERR_MODULE_NOT_FOUND: Cannot find package '@deepseek-ai/dsh-app-boot'`）：首次运行的依赖安装若被中途打断，可能被记录成已完成，之后每次启动都加载半安装的 Harness 树，启动页一直显示"启动失败"，只能手工删除缓存。
+- 预配复用现在要求 pnpm 的安装结束标记（`node_modules/.modules.yaml`）与 `.pnpm` 存储同时存在，缺失标记的安装失败会明确报错进入恢复路径，WSL 侧的跳过判定也使用同一标记。
+- 当 Web Host 死于指名道姓的缺依赖错误时，桌面外壳会在同一次启动内清空并重新预配 harness 树一次，而不是把 Node 堆栈甩给用户——无需手工删缓存。
+- 内置 Harness 源码保持在上游 `dsh@0.1.1-rc.2`，叠加本次桌面端修复。
 
 ### 包含的构建
 
