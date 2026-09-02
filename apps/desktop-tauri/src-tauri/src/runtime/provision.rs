@@ -220,7 +220,7 @@ pub async fn ensure_runtime(
         }
     }
 
-    if harness_root.join("node_modules").join(".pnpm").is_dir() {
+    if install_completed(&harness_root) {
         boot_log::info("harness dependencies installed; pnpm install skipped");
     } else {
         progress(ProvisionEvent::Status(
@@ -229,9 +229,10 @@ pub async fn ensure_runtime(
         progress(ProvisionEvent::Progress(50));
         if let Err(error) = pnpm_install_harness(&node_binary, &pnpm_binary, &harness_root) {
             boot_log::info(&format!("pnpm install harness fallback: {error}"));
-            if !harness_root.join("node_modules").join(".pnpm").is_dir()
-                && !is_recoverable_io(&error)
-            {
+            // The tree cannot resolve its imports until the install completes,
+            // so any failure here fails the boot into recovery instead of
+            // leaving a half-linked store that poisons later boots.
+            if !install_completed(&harness_root) {
                 return Err(error);
             }
         }
@@ -350,10 +351,7 @@ fn manifest_ready(
     harness_root: &Path,
     cli_entry: &Path,
 ) -> bool {
-    if !manifest_path.is_file()
-        || !cli_entry.is_file()
-        || !harness_root.join("node_modules").join(".pnpm").is_dir()
-    {
+    if !manifest_path.is_file() || !cli_entry.is_file() || !install_completed(harness_root) {
         return false;
     }
 
@@ -445,17 +443,52 @@ pub fn try_recover_paths(bundled: Option<&Path>) -> Option<RuntimePaths> {
     })
 }
 
-/// A harness tree boots the Host only when the prebuilt CLI entry and the
-/// installed dependency store are both present. A freshly seeded tree always
-/// ships `bin.js`, so the dependency store is what separates a bootable tree
-/// from one whose `pnpm install` has not run (or failed).
+/// A harness tree boots the Host only when the prebuilt CLI entry and a
+/// completed `pnpm install` are both present. pnpm creates the
+/// `node_modules/.pnpm` store during linking but writes
+/// `node_modules/.modules.yaml` only at the end, so the marker is what
+/// separates a completed install from one that was killed mid-link; a store
+/// without the marker fails `dsh web` with `ERR_MODULE_NOT_FOUND`.
 fn harness_tree_bootable(root: &Path) -> bool {
     root.join("apps")
         .join("cli")
         .join("lib")
         .join("bin.js")
         .is_file()
-        && root.join("node_modules").join(".pnpm").is_dir()
+        && install_completed(root)
+}
+
+/// True when `pnpm install` finished for `root`: the virtual store exists and
+/// pnpm's end-of-install marker is present.
+fn install_completed(root: &Path) -> bool {
+    root.join("node_modules").join(".pnpm").is_dir()
+        && root.join("node_modules").join(".modules.yaml").is_file()
+}
+
+/// Delete the provisioned tree and its manifest so the next `ensure_runtime`
+/// call reseeds and reinstalls from the bundled source. The on-disk gates
+/// cannot see every form of store damage after a completed install (e.g. a
+/// package directory removed later), so a boot whose Host dies naming an
+/// unresolvable dependency repairs itself through here.
+pub fn invalidate_provisioned_tree(paths: &RuntimePaths) -> Result<(), String> {
+    if paths.harness_root.exists() {
+        fs::remove_dir_all(&paths.harness_root)
+            .map_err(|e| recoverable_message("remove harness", &paths.harness_root, e))?;
+        boot_log::info(&format!(
+            "invalidated harness {}",
+            paths.harness_root.display()
+        ));
+    }
+    let manifest_path = paths.runtime_root.join("manifest.json");
+    match fs::remove_file(&manifest_path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(recoverable_message(
+            "remove manifest",
+            &manifest_path,
+            error,
+        )),
+    }
 }
 
 fn mtime_of(path: &Path) -> SystemTime {
@@ -1079,6 +1112,7 @@ mod tests {
         fs::write(&cli, b"// cli").unwrap();
         if installed {
             fs::create_dir_all(root.join("node_modules").join(".pnpm")).unwrap();
+            fs::write(root.join("node_modules").join(".modules.yaml"), b"").unwrap();
         }
     }
 
@@ -1092,6 +1126,18 @@ mod tests {
         let installed = dir.join("installed");
         make_harness_tree(&installed, true);
         assert!(harness_tree_bootable(&installed));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_store_without_the_completion_marker_is_not_bootable() {
+        let dir = std::env::temp_dir().join(format!("dsh-marker-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let killed = dir.join("harness-versions").join("killedmidinstall");
+        make_harness_tree(&killed, true);
+        fs::remove_file(killed.join("node_modules").join(".modules.yaml")).unwrap();
+        assert!(!harness_tree_bootable(&killed));
+        assert!(find_existing_harness(&dir).is_none());
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1262,8 +1308,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("dsh-manifest-ready-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         let harness = dir.join("harness");
-        let node_modules = harness.join("node_modules").join(".pnpm");
-        let _ = fs::create_dir_all(&node_modules);
+        let node_modules = harness.join("node_modules");
+        let _ = fs::create_dir_all(node_modules.join(".pnpm"));
+        fs::write(node_modules.join(".modules.yaml"), b"").unwrap();
         let cli = harness.join("apps").join("cli").join("lib").join("bin.js");
         let _ = fs::create_dir_all(cli.parent().unwrap());
         fs::write(&cli, b"cli").unwrap();
@@ -1303,8 +1350,9 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("dsh-manifest-stale-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         let harness = dir.join("harness");
-        let node_modules = harness.join("node_modules").join(".pnpm");
-        let _ = fs::create_dir_all(&node_modules);
+        let node_modules = harness.join("node_modules");
+        let _ = fs::create_dir_all(node_modules.join(".pnpm"));
+        fs::write(node_modules.join(".modules.yaml"), b"").unwrap();
         let cli = harness.join("apps").join("cli").join("lib").join("bin.js");
         let _ = fs::create_dir_all(cli.parent().unwrap());
         fs::write(&cli, b"cli").unwrap();

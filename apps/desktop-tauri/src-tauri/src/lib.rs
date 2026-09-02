@@ -14,8 +14,10 @@ use i18n::Msg;
 use runtime::boot_log;
 use runtime::config::BUNDLED_HARNESS_DIR;
 use runtime::io_fallback::is_recoverable_io;
-use runtime::provision::{ensure_runtime, read_bundle_hash, try_recover_paths};
-use runtime::supervisor::{spawn_wsl_web_host, HostOverlay};
+use runtime::provision::{
+    ensure_runtime, invalidate_provisioned_tree, read_bundle_hash, try_recover_paths, RuntimePaths,
+};
+use runtime::supervisor::{is_missing_dependency_failure, spawn_wsl_web_host, HostOverlay};
 use runtime::user_home::resolve_user_home;
 use runtime::wsl::{
     ensure_wsl_runtime, parse_wsl_list, select_distro, SystemWslRunner, WslRunner, WslSelectError,
@@ -185,13 +187,59 @@ async fn boot_windows_runtime(
     notify: Option<&notify::NotifyHandle>,
     progress: Arc<dyn Fn(ProvisionEvent) + Send + Sync>,
 ) -> Result<DesktopRuntime, String> {
-    let paths = match ensure_runtime(bundled.clone(), {
-        let progress = Arc::clone(&progress);
+    let overlay_src = overlay::resolve_overlay_source(app.path().resource_dir().ok().as_deref());
+    let mut paths = ensure_or_recover(bundled.clone(), &progress).await?;
+
+    // A Host that dies naming an unresolvable dependency points at store
+    // damage the on-disk gates cannot see (e.g. a package removed after a
+    // completed install), so the first such failure invalidates the tree and
+    // re-provisions once before giving up. The overlay patch file lives
+    // inside the harness tree and is re-implanted with each attempt.
+    let mut repaired = false;
+    loop {
+        let host_overlay = notify.and_then(|notify| {
+            match overlay::install_overlay(&paths, &overlay_src, &notify.url) {
+                Ok(implanted) => Some(HostOverlay {
+                    patch_file: implanted.patch_file,
+                    notify_url: notify.url.clone(),
+                }),
+                Err(error) => {
+                    boot_log::info(&format!("overlay skipped: {error}"));
+                    None
+                }
+            }
+        });
+
+        match DesktopRuntime::start(paths.clone(), host_overlay.as_ref(), Arc::clone(&progress))
+            .await
+        {
+            Ok(runtime) => return Ok(runtime),
+            Err(error) if !repaired && is_missing_dependency_failure(&error) => {
+                boot_log::error(&format!(
+                    "host missing a provisioned dependency; re-provisioning: {error}"
+                ));
+                invalidate_provisioned_tree(&paths)?;
+                paths = ensure_or_recover(bundled.clone(), &progress).await?;
+                repaired = true;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+/// Provision the runtime, falling back to whatever Node / CLI already exists
+/// on disk when provisioning fails.
+async fn ensure_or_recover(
+    bundled: Option<PathBuf>,
+    progress: &Arc<dyn Fn(ProvisionEvent) + Send + Sync>,
+) -> Result<RuntimePaths, String> {
+    match ensure_runtime(bundled.clone(), {
+        let progress = Arc::clone(progress);
         move |event| progress(event)
     })
     .await
     {
-        Ok(paths) => paths,
+        Ok(paths) => Ok(paths),
         Err(error) => {
             boot_log::error(&format!("provision failed: {error}"));
             if let Some(paths) = try_recover_paths(bundled.as_deref()) {
@@ -200,30 +248,14 @@ async fn boot_windows_runtime(
                 } else {
                     i18n::t(Msg::BootRecoverGeneric).into()
                 }));
-                paths
+                Ok(paths)
             } else if is_recoverable_io(&error) {
-                return Err(i18n::t(Msg::BootRecoverFailed).into());
+                Err(i18n::t(Msg::BootRecoverFailed).into())
             } else {
-                return Err(error);
+                Err(error)
             }
         }
-    };
-
-    let overlay_src = overlay::resolve_overlay_source(app.path().resource_dir().ok().as_deref());
-    let host_overlay = notify.and_then(|notify| {
-        match overlay::install_overlay(&paths, &overlay_src, &notify.url) {
-            Ok(implanted) => Some(HostOverlay {
-                patch_file: implanted.patch_file,
-                notify_url: notify.url.clone(),
-            }),
-            Err(error) => {
-                boot_log::info(&format!("overlay skipped: {error}"));
-                None
-            }
-        }
-    });
-
-    DesktopRuntime::start(paths, host_overlay.as_ref(), progress).await
+    }
 }
 
 async fn boot_wsl_runtime(

@@ -492,6 +492,17 @@ fn failing_loader_entry(message: &str) -> Option<String> {
     (!id.is_empty()).then_some(id)
 }
 
+/// True when the Host exited because Node could not resolve a dependency of
+/// the provisioned tree (`ERR_MODULE_NOT_FOUND` from ESM resolution or
+/// `Cannot find module` from CJS). Unlike a plugin loader failure this names
+/// broken provisioning, so the caller repairs the tree instead of disabling
+/// plugin entries.
+pub fn is_missing_dependency_failure(error: &str) -> bool {
+    error.contains("ERR_MODULE_NOT_FOUND")
+        || error.contains("Cannot find package")
+        || error.contains("Cannot find module")
+}
+
 fn host_pid_path() -> std::path::PathBuf {
     app_data_root()
         .map(|root| root.join("host.pid"))
@@ -647,8 +658,8 @@ fn port_free(port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        failing_loader_entry, parse_linux_pid_from_stderr, read_linux_pid_handshake,
-        rescue_patch_body, wsl_stop_args,
+        failing_loader_entry, is_missing_dependency_failure, parse_linux_pid_from_stderr,
+        read_linux_pid_handshake, rescue_patch_body, wsl_stop_args,
     };
     use std::io::Read;
     use std::sync::{Arc, Mutex};
@@ -666,6 +677,19 @@ invalid plugin, expect function or object with an \"apply\" method, received obj
         );
         assert_eq!(failing_loader_entry("dsh web 进程已退出 (code 1)"), None);
         assert_eq!(failing_loader_entry("failed to apply loader entry "), None);
+    }
+
+    #[test]
+    fn recognizes_a_missing_dependency_exit_as_a_provision_failure() {
+        let esm = "Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@deepseek-ai/dsh-app-boot' \
+imported from C:\\harness\\apps\\cli\\lib\\bin.js";
+        assert!(is_missing_dependency_failure(esm));
+        assert!(is_missing_dependency_failure(
+            "Error: Cannot find module 'zod'\n    at require"
+        ));
+        assert!(!is_missing_dependency_failure(
+            "dsh web 进程已退出 (code 1)\nError: dsh: plugin tree failed to load"
+        ));
     }
 
     #[test]

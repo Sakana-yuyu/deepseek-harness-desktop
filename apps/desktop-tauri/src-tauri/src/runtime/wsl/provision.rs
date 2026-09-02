@@ -88,10 +88,13 @@ pub async fn ensure_wsl_runtime(
         .ok_or_else(|| format!("{}: invalid node path {linux_node}", err_node()))?;
     let linux_path = format!("{node_bin_dir}:/usr/bin");
 
-    // An existing dependency store marks a completed provision of this bundle;
-    // rerunning `pnpm install` would cost a full registry resolve for no change.
+    // A completed install is proven by pnpm's end-of-install
+    // `node_modules/.modules.yaml`; the `.pnpm` store also exists when a
+    // previous install was killed mid-link, and booting that store fails with
+    // `ERR_MODULE_NOT_FOUND`.
     let deps_store = format!("{linux_harness_root}/node_modules/.pnpm");
-    if wsl_test_d(runner, distro, &deps_store)? {
+    let deps_marker = format!("{linux_harness_root}/node_modules/.modules.yaml");
+    if wsl_test_d(runner, distro, &deps_store)? && wsl_test_f(runner, distro, &deps_marker)? {
         boot_log::info("wsl harness dependencies installed; pnpm install skipped");
     } else {
         run_pnpm_install(runner, distro, &linux_path, &linux_harness_root)?;
@@ -930,6 +933,9 @@ mod tests {
         let preferred_node = "/home/u/.local/share/dsh-desktop/runtime/node/bin/node";
         let deps_store =
             format!("/home/u/.local/share/dsh-desktop/harness-versions/{hash}/node_modules/.pnpm");
+        let deps_marker = format!(
+            "/home/u/.local/share/dsh-desktop/harness-versions/{hash}/node_modules/.modules.yaml"
+        );
 
         let runner = Scripted::new(vec![
             (
@@ -982,6 +988,17 @@ mod tests {
                     "test".into(),
                     "-d".into(),
                     deps_store,
+                ],
+                ok_out(""),
+            ),
+            (
+                vec![
+                    "-d".into(),
+                    "Ubuntu".into(),
+                    "--exec".into(),
+                    "test".into(),
+                    "-f".into(),
+                    deps_marker,
                 ],
                 ok_out(""),
             ),
