@@ -41,7 +41,10 @@ The kernel packages boot and serve the page; the UI feature packages present it.
 | [`ui-primitives/`](ui-primitives/README.md) | Provides shared React controls, icons, and content renderers | — |
 | [`ui-attachment/`](ui-attachment/README.md) | Registers composer and message-image attachment presentation | — |
 | [`ui-layout/`](ui-layout/README.md) | Arranges the main application regions | — |
+| [`ui-dockkit/`](ui-dockkit/README.md) | Provides docking layout operations and React components | — |
 | [`ui-sidebar/`](ui-sidebar/README.md) | Presents workspace and session navigation | — |
+| [`ui-sidebar-right/`](ui-sidebar-right/README.md) | Owns the right Sidebar and its tab types | `ctx.sidebarRight`, `ctx.sidebarRightTabs` |
+| [`ui-sidebar-documentpreview/`](ui-sidebar-documentpreview/README.md) | Displays documents in right Sidebar tabs | `ctx.documentPreviews` |
 | [`resources/`](resources/README.md) | Unified resource model: protocol providers behind the `useResource` session standard hook | `ctx.resources` |
 | [`ui-sidebar-files/`](ui-sidebar-files/README.md) | Right-Sidebar workspace file tree tab type | — |
 | [`ui-brand-official/`](ui-brand-official/README.md) | Fills the generic browser-brand slots with the official name and marks | — |

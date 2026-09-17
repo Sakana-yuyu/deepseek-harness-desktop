@@ -27,13 +27,13 @@ Status: implemented
 
 挂载默认按会话进行。实测一份十二行组装每会话约 3ms、约 600KB，因此隔离比任何共享方案都更划算；而由用户或 agent 写出的 preset 也因此拥有尽可能小的影响面。确实自带昂贵单例的 preset，可以用 Cordis 自身的 `isolate` 词汇显式选择共享：命名 realm 的 label 是进程级全局的，因此两棵子树只要写同一个 label 就解析到同一个实例。
 
-`agent-presets` 用户设置命名空间同时携带 `modeSelectionEnabled` 与 `default`。`modeSelectionEnabled` 默认为 `true`：既有的新建会话选择器保持显示；未指名会话会解析到已保存的用户 `default`，尚未保存时则使用组装中 `default` 指定的部署默认值。Web 设置开关只改变该策略：关闭选择时临时使用部署默认值，再次开启时恢复已保存的用户 `default`。这是对 [#1539](https://github.com/deepseek-harness/deepseek-harness/pull/1539) 所确立“用户值覆盖组装值”这一普通 settings 优先级的有意例外：隐藏选择器会停用用户的模式选择策略，但不会删除其保存值。该 Host 策略适用于此后所有未显式指定 preset 的会话；显式指定及既有会话不受影响。组装值还使本包在没有 settings 提供方时照常工作；选择器开启后，用户可覆盖默认值来改变后续会话，而无需编辑部署所拥有的 `cordis.yml`。
+`agent-presets` 用户设置命名空间同时携带 `modeSelectionEnabled` 与 `default`。`modeSelectionEnabled` 默认为 `true`：既有的新建会话选择器保持显示；未指名会话会解析到已保存的用户 `default`，尚未保存时则使用组装中 `default` 指定的部署默认值。Web 设置开关只改变该策略：关闭选择时临时使用部署默认值，再次开启时恢复已保存的用户 `default`。这是对 #1539 所确立“用户值覆盖组装值”这一普通 settings 优先级的有意例外：隐藏选择器会停用用户的模式选择策略，但不会删除其保存值。该 Host 策略适用于此后所有未显式指定 preset 的会话；显式指定及既有会话不受影响。组装值还使本包在没有 settings 提供方时照常工作；选择器开启后，用户可覆盖默认值来改变后续会话，而无需编辑部署所拥有的 `cordis.yml`。
 
 ## 后果
 
 **有效默认值在每次解析时读取，绝不保存快照。** 缓存下来就需要一个 `watch` 订阅和一条重载路径才能保持诚实，而解析后的 scope 本来就会重读热重载过的文档。Host 设置本身会在此后解析未指名会话时生效。Web Settings 中的明确操作还会把已接受的有效默认值送入既有的空白会话选择链路，但只在操作前捕获的会话 id 仍是当前空白会话时对齐；它绝不会重新组装运行中的会话，也不会改写该会话的历史。session 日志从另一侧执行同一条不变量——header 记录会话**创建时**的 id，此后空白期的任何切换由 `agent-preset/selected` 事件记录，因此读取方解析的是两者之和（`resolveSessionPreset`）、绝不单看 header：恢复重建的是其历史所产出的那份组装而不是恢复时的部署默认值，冷读记录的 presenter 在那份组装的层里解析，网关也会拒绝把一个活着的会话收编到它当前运行的 preset 以外的 preset 之下。快照会让两者恰好在设置改变的那一刻各说各话。
 
-**直接挂载的子树对启动审计不可见。** 它不会把自己关联到 `Entry`，因此不在 `ctx.loader.entries()` 中，`assertEntriesActivated` 也看不到它。改由挂载过程自行校验各行，通过一个会公开自身 tree 的 `Include` 子类读取。
+**直接挂载的子树对启动审计不可见。** 它不会把自己关联到 `Entry`，因此不在 `ctx.loader.entries()` 中，`auditStartupEntries` 也看不到它。挂载过程通过一个会公开自身 tree 的 `Include` 子类读取各行，并要求每个启用行都激活，不受[应用启动策略](2026-09-09-consumer-owned-startup-strictness.zh.md)影响。
 
 **preset 能写出 group，是因为 app 注册了它。** 跨行共享 realm 就是一个 `cordis:group` 行，而住在本工作区之外的 preset——也就是 Harness home 下由人或 agent 创作的那些，正是这套设计的目的——无法按名字解析 `@cordisjs/plugin-group`：Node 向上查找 `node_modules` 的路径从那里永远走不到 harness。因此 `boot()` 把 `cordis:group` 与 `cordis:include` 并排注册为 loader builtin，两者都经由环境模块管线加载，而不依赖被包含树自身的说明符解析。没有它，上文那套 `isolate` 词汇就只能一行一行地表达，提供方也永远无法与它的消费方归入同一组。
 

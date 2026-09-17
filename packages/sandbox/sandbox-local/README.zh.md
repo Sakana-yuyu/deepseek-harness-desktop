@@ -54,7 +54,7 @@ kind: "package-reference"
 
 ### 失败与恢复
 
-不受支持的平台或不可用的 runner 会拒绝执行：`confine()` 抛出 `SANDBOX_UNAVAILABLE` 并列出该平台的 runner 选项，消费方会呈现该错误，而不是让命令不受限制地运行。启动后拒绝自身 profile 的 runner 由其致命 stderr 签名与退出码识别，因此损坏的沙箱不会被误认为被拒绝的命令。`runnerCommand` 覆盖是操作方断言：它跳过功能探测，并假定配置的 runner 诚实实现与 bwrap 兼容的 profile。
+不受支持的平台或不可用的 runner 会拒绝执行：`confine()` 以 `SANDBOX_UNAVAILABLE` 拒绝 并列出该平台的 runner 选项，消费方会呈现该错误，而不是让命令不受限制地运行。启动后拒绝自身 profile 的 runner 由其致命 stderr 签名与退出码识别，因此损坏的沙箱不会被误认为被拒绝的命令。`runnerCommand` 覆盖是操作方断言：它跳过功能探测，并假定配置的 runner 诚实实现与 bwrap 兼容的 profile。
 
 -----
 
@@ -79,6 +79,8 @@ bwrap profile 组合只读宿主根目录、全新 `/dev` 与私有 PID 命名�
 Seatbelt profile 默认允许，带 `(deny file-write*)` 与来自共享 `writableRoots` 辅助函数的写入 allow-list，因此恰好管辖模式承诺的文件操作；每个根目录都经过规范化，因为 Seatbelt 匹配解析后的路径（`/tmp` 就是 `/private/tmp`）。
 
 Windows 档为每个工作区保留一个确定性写入 SID 和常驻 ACE，同时为每个活跃的会话/工作区对分配一个随机私有临时目录，以及不同的 SID 和可撤销 ACE——共享工作区的会话共享其预期写权限，却不会继承彼此的临时目录权限。新的提供方总会选择新的临时路径和 SID，因此崩溃残留既无法阻止恢复的会话，也无法向其授权。该档报告 `partial` 强制执行，因为受限令牌必须保留 Everyone，且 NTFS 硬链接会把同一文件对象别名为多个路径。
+
+构建后的 ACL runner 缺失时，源码启动将 `tsx/esm/api` 加载器和 TypeScript 路径映射固定到本安装目录。命令的工作目录和环境中的 `TSX_TSCONFIG_PATH` 无法选择 runner 的源码依赖。
 
 ### 拒绝与 runner 失败方言
 

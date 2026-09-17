@@ -51,7 +51,7 @@ kind: "package-reference"
 
 ### 运行命令
 
-工具执行 `pwsh -Command <command>` 并返回合并后的输出。命令每次调用都运行在全新 pwsh 进程中，因此状态从不保留——请传 `workdir` 而不是 `cd`。路径使用原生 Windows 形式，环境变量用 `$env:NAME` 读取。非零退出以 `[exit code: N]` 报告；在 Windows 上，强制终止的命令以 `[exit code: 1]` 结算且没有信号标记，因此 agent 把中断后的裸 exit 1 当作终止而非命令失败。后台运行、输出截断以及 `description`／`timeoutMs`／`workdir` 参数的行为与 `dsh-tool-bash` 完全一致。
+工具执行 `pwsh -Command <command>` 并返回合并后的输出。命令每次调用都运行在全新 pwsh 进程中，因此状态从不保留——请传 `workdir` 而不是 `cd`。路径使用原生 Windows 形式，环境变量用 `$env:NAME` 读取。非零退出以 `[exit code: N]` 报告；在 Windows 上，强制终止的命令以 `[exit code: 1]` 结算且没有信号标记，因此 agent 把中断后的裸 exit 1 当作终止而非命令失败。后台运行、输出截断以及 `description`／`timeoutMs`／`workdir` 参数的行为与 [`dsh-tool-bash`](../tool-bash/README.zh.md#running-long-commands-in-the-background) 完全一致，包括异步 shell 准备过程中由任务负责的取消。
 
 ### Windows 特有的沙箱行为
 

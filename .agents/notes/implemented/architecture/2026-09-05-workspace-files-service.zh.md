@@ -95,7 +95,7 @@ abstract readByteRange(target: FsTarget, range: { offset: number; length: number
 
 它返回 `[offset, offset + length)` 处的字节，文件在窗内结束则变短，`offset` 位于或越过末尾则为空。窗口即界：后端最多传输为到达 `offset` 而跳过的前缀之外的 `length` 字节，从不缓冲整个文件，因此调用方对 `length` 的上限就是防无界缓冲的守卫，与 `readBytes` 的界并列而非取代它。参数顺序遵循 `readText`、`streamText` 与 `listDir`——先目标，再操作自己的参数，最后可选 signal——而不是 `readBytes` 把 signal 放中间的形式，那是该类中唯一的例外。`offset` 与 `length` 按前置条件都是非负整数；seam 是类型化的同进程边界，不做任何校验，由 Remote 方法在线路处校验。
 
-`fs-local` 在与其他读取相同的普通文件 stat 之后打开 `createReadStream(targetKey, { start: offset, end: offset + length - 1 })`，对 `length` 为 0 直接返回空数组而不开流；`fs-sandbox` 继承 `LocalFileSystem`，随之继承该方法。`fs-e2b` 的 SDK 只能从文件开头开始流式读取，于是它跳过 `offset` 字节、把 `length` 字节拷入窗口，并在窗口填满的那一刻取消流，除跳过的前缀外传输量不超过窗口；先行结束的流则任其关闭。继承 `FileSystem` 的四个测试替身也实现了该方法。
+`fs-local` 在与其他读取相同的普通文件 stat 之后打开 `createReadStream(targetKey, { start: offset, end: offset + length - 1 })`，对 `length` 为 0 直接返回空数组而不开流；`fs-sandbox` 继承 `LocalFileSystem`，随之继承该方法。继承 `FileSystem` 的四个测试替身也实现了该方法。
 
 ### Client `file` 提供者
 
@@ -133,7 +133,7 @@ Client 导出向 `ctx.resources` 注册一个 `ResourceProvider<'file'>`，存�
 
 - 工作区文件访问由 `api/workspace-files` 的 Host/Client 两面共同承担；Session Controller 不携带其中任何实现，两面的编译与运行时入口保持独立。header-only Session scope 让普通、subagent、live 与 cold Session 都能解析自己的相对路径，不需要 Agent 生命周期，也不回退父 Session。
 - 任意大小的文件都能打开：文本按行页、任何文件按字节窗口，在 Host 上各自只花一页或一窗内存；全文读取则受 `maxFileBytes` 约束；代价是消费者自己拼装页面，且单行超过 `maxBytes` 的行没有任何页，因为页按行切。
-- 每个文件系统提供者现在都提供开窗的原始读取。`fs-e2b` 为此付出传输被跳过前缀的代价，因为其 SDK 不能 seek；`fs-local` 能 seek。
+- 每个文件系统提供者都提供开窗的原始读取；`fs-local` 直接定位到所请求的偏移量。
 - 线路上的路径是规范的：`absolutePath` 与变更帧以符号链接已解析的拼法命名文件。跟随者绑定到成功的 `stat.absolutePath`，因此同一文件的另一种拼法——经符号链接到达的工作区根——也使用该规范变更键。
 - 变更帧只报告 agent 自己的操作。用户编辑器、shell 或子进程改动的文件不产生帧；agent 仅仅读取一个被别处改动的文件却会产生帧，因为读取观察到了新版本。
 - 文件类型检查先于后端读取，`list` 也先报种类再报根外位置。页的 `version` 可能落后内容一次写入，停滞的 `changes` 消费者会让 Host 内存增长，因为一代流的队列无界；每一条都是包 README 记录在册的已知取舍。
@@ -142,7 +142,7 @@ Client 导出向 `ctx.resources` 注册一个 `ResourceProvider<'file'>`，存�
 
 ## Testing
 
-`packages/api/workspace-files/tests` 中的 Host spec 覆盖 live 与 cold subagent Session 的 header-only scope 解析、部署 fallback、缺失身份与 lookup 释放；分页读取（整文件、嵌套路径、空文件、多字节 UTF-8、行窗口边界、缺省与拒绝的 limit、保留回车）；字节窗口（缺省、中段与尾窗、越界与空文件、base64 往返、版本、上限、坏范围以及无大小时的 `eof`）；`stat`；工作区外读取及后端拒绝；`list` 的包含、截断、符号链接与 `not-directory`；以及由 `fs/observed` 驱动并按根过滤的 `changes`。Client spec 覆盖提供者帧、变更流、不支持地址及注册与释放。`fs/fs`、`fs-local` 与 `fs-e2b` spec 钉住 `readByteRange`；`dsh-util-workspace-path` spec 钉住文件地址语法。connection fixture 为 web e2e 套件提供 `stat`、分页 `read`、`list` 与一帧可选启用的 `changes`。
+`packages/api/workspace-files/tests` 中的 Host spec 覆盖 live 与 cold subagent Session 的 header-only scope 解析、部署 fallback、缺失身份与 lookup 释放；分页读取（整文件、嵌套路径、空文件、多字节 UTF-8、行窗口边界、缺省与拒绝的 limit、保留回车）；字节窗口（缺省、中段与尾窗、越界与空文件、base64 往返、版本、上限、坏范围以及无大小时的 `eof`）；`stat`；工作区外读取及后端拒绝；`list` 的包含、截断、符号链接与 `not-directory`；以及由 `fs/observed` 驱动并按根过滤的 `changes`。Client spec 覆盖提供者帧、变更流、不支持地址及注册与释放。`fs/fs` 与 `fs-local` spec 钉住 `readByteRange`；`dsh-util-workspace-path` spec 钉住文件地址语法。connection fixture 为 web e2e 套件提供 `stat`、分页 `read`、`list` 与一帧可选启用的 `changes`。
 
 ## Deferred
 

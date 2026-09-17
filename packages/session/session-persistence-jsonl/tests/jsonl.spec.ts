@@ -1998,9 +1998,9 @@ describe('JsonlSessionPersistence: scanLog unit', () => {
     expect(() => { scanner.write(Buffer.from('null\n')) }).toThrow(/invalid committed event/)
   })
 
-  it('expands valid stored provenance ranges', () => {
+  it('expands valid stored source-event ranges', () => {
     const log = [
-      JSON.stringify(toHeaderLine(meta('scanner-provenance'))),
+      JSON.stringify(toHeaderLine(meta('scanner-source-ranges'))),
       JSON.stringify({ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }),
       JSON.stringify(oneTurnLog()[1]),
       JSON.stringify({

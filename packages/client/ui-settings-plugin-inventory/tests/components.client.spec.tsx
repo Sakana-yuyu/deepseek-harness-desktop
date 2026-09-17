@@ -114,7 +114,7 @@ describe('PluginInventorySettingsTab', () => {
     expect(view.container.querySelector('[data-plugin-count]')?.getAttribute('data-plugin-count')).toBe('7')
     expect(screen.getByText(`1 ${en.failedCountLabel}`)).toBeTruthy()
 
-    // A preset row expands into its provenance facts.
+    // A preset row expands into its source facts.
     fireEvent.click(screen.getByRole('button', { name: 'pwsh, pwsh, Conditional' }))
     expect(screen.getByText(en.fromPreset)).toBeTruthy()
     expect(screen.getByText('标准模式')).toBeTruthy()
@@ -213,7 +213,7 @@ describe('PluginInventorySettingsTab', () => {
     pickPreset('ptc')
     expect(view.container.querySelector('[data-preset-plugin-count]')?.getAttribute('data-preset-plugin-count')).toBe('3')
     fireEvent.click(screen.getByRole('button', { name: 'tool-bash, bash, Enabled' }))
-    // An unnamed preset labels provenance by its id.
+    // An unnamed preset labels its source by id.
     expect(screen.getByText(en.fromPreset).nextElementSibling?.textContent).toBe('ptc')
 
     pickPreset('坏预设 (failed to load)')

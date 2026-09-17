@@ -213,7 +213,7 @@ describe('web e2e: fresh round trip through the real assembly', () => {
   it.skipIf(MODE === 'record')('expands and collapses the reasoning fold from its click target', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-round-trip-think'))
     // Interaction over the REAL wire-delivered transcript (the fixture-client
-    // tier pins the same gesture against the fixture Connection RPC; this one runs on
+    // tier pins the same gesture against RemoteMock; this one runs on
     // follow-stream-fed state). Runs after the golden capture so the committed
     // aria surface stays the untouched settled state.
     await expandTurnProcesses(page)

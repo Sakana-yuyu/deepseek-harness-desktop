@@ -254,12 +254,12 @@ export class SubagentRuntime extends TypertRemoteService {
 
   /**
    * Deliver one host-protocol message to a direct continuable child.
-   * Symbol-keyed so host adapters can preserve their own provenance without
+   * Symbol-keyed so host adapters can preserve their own source descriptors without
    * widening the public Service Definition or impersonating an Agent sender.
    * @param parent - exact live direct parent authorizing delivery.
    * @param childId - durable direct-child session id.
    * @param content - host-authored content to deliver.
-   * @param source - durable host-protocol provenance.
+   * @param source - durable host-protocol source descriptor.
    * @param signal - caller cancellation before inbox acceptance.
    * @param delivery - Queue as a distinct turn or Steer at the nearest step.
    * @returns the accepted message's inbox id.

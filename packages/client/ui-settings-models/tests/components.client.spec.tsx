@@ -665,6 +665,51 @@ describe('ModelsSection', () => {
     ])
   })
 
+  it('edits the shared DeepSeek card while preserving the YAML protocol selection', async () => {
+    const namespace: SettingsNamespaceView = {
+      ...wireNamespaces()[0]!,
+      ns: 'llm-deepseek',
+      value: { protocol: 'messages', apiKeyEnv: 'DEEPSEEK_API_KEY', models: DEFAULT_DEEPSEEK_MODELS },
+      user: {},
+    }
+    const { face, mutate, set } = scriptedFace({
+      mutate: vi.fn(() => Promise.resolve(remoteOk(namespace))),
+    })
+    const { ProviderEditor } = await import('../src/client/ProviderEditor.tsx')
+    render(<ProviderEditor
+      provider="deepseek-official"
+      displayName="DeepSeek"
+      namespace={namespace}
+      schema={settingsSchema}
+      settingsPath={[]}
+      operations={operationsWith(face)}
+      t={t}
+      readOnly={false}
+      onClose={vi.fn()}
+    />)
+    fireEvent.click(screen.getByText(en.customized))
+    expect(screen.getByLabelText<HTMLInputElement>(en.baseUrl).placeholder)
+      .toBe('https://api.deepseek.com/anthropic')
+    expect(screen.queryByLabelText(en.customApi)).toBeNull()
+    expect(screen.getByText(en.deepSeekEndpointHint)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(en.keyInput), { target: { value: 'sk-messages-test' } })
+    fireEvent.change(screen.getByLabelText(en.baseUrl), { target: { value: 'https://messages.example/anthropic' } })
+    fireEvent.change(screen.getByLabelText(`${en.modelName} 1`), { target: { value: 'Messages Flash' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(set).toHaveBeenCalledWith('DEEPSEEK_API_KEY', 'sk-messages-test') })
+    expect(mutate.mock.calls).toEqual([[
+      'llm-deepseek',
+      [
+        { op: 'set', path: ['baseURL'], value: 'https://messages.example/anthropic' },
+        { op: 'set', path: ['models'], value: [
+          { ...DEFAULT_DEEPSEEK_MODELS[0], name: 'Messages Flash' },
+          DEFAULT_DEEPSEEK_MODELS[1],
+        ] },
+      ],
+      0,
+    ]])
+  })
+
   it('rejects duplicate DeepSeek model ids before writing', async () => {
     const { mutate } = await mountDeepSeekCard()
     fireEvent.click(screen.getByText(en.customized))

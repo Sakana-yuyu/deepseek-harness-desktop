@@ -369,7 +369,7 @@ describe('released event and payload inventory', () => {
     }) }).toThrow(/unknown historical event/)
   })
 
-  it('permits empty Assistant provenance only under the released-v1 policy', () => {
+  it('permits empty Assistant source-event references only under the released-v1 policy', () => {
     const assistant = {
       type: 'assistant/message', seq: 1, time: 2, data: {},
       sourceEventSeqs: [], surfaceOp: 'append',
@@ -377,7 +377,7 @@ describe('released event and payload inventory', () => {
     expect(() => { assertReleasedSurfaceMetadata(assistant, 1, assistant.type, 'allow-empty-assistant') })
       .not.toThrow()
     expect(() => { assertReleasedSurfaceMetadata(assistant, 1, assistant.type, 'forbid-assistant') })
-      .toThrow(/obsolete chunk provenance/)
+      .toThrow(/obsolete chunk references/)
   })
 
   it('keeps capturedFormatVersion v1-only inside session-reference sources', () => {

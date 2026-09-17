@@ -6,6 +6,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Group from '@deepseek-ai/cordis-plugin-group'
+import { PluginPackages } from '@deepseek-ai/dsh-app-boot'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
@@ -15,7 +16,7 @@ import AgentRegistry, { assembleContextFor, type Agent } from '@deepseek-ai/dsh-
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AgentPresets, {
-  COMPOSITION_FILE, leakedServices, livePresetMounts, mountPreset, serviceForAgent,
+  COMPOSITION_FILE, inactiveRows, leakedServices, livePresetMounts, mountPreset, serviceForAgent,
 } from '@deepseek-ai/dsh-agent-presets'
 import type { Config } from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
@@ -44,6 +45,7 @@ async function harness(roster: Config = { default: 'standard', roots: ROOTS, inc
   const ctx = new Context()
   ctx.baseUrl = pathToFileURL(FIXTURES).href + '/'
   await ctx.plugin(Loader)
+  await ctx.plugin(PluginPackages)
   ctx.loader.builtins.include = Include
   // A preset outside this workspace cannot resolve `cordis-plugin-group` by
   // name, so the app registers it as a builtin; the fixtures compose the same
@@ -242,6 +244,27 @@ describe('composing a child agent from its parent', () => {
 })
 
 describe('rejecting a composition that cannot be used', () => {
+  it('reports import failures and arbitrary plugin rejections after eager settlement', async () => {
+    ctx.loader.builtins.stringFailure = () => { throw 'string rejection' }
+    ctx.loader.builtins.aggregateFailure = () => {
+      throw new AggregateError([
+        new Error('first member'),
+        new Error('wrapped member', { cause: new AggregateError(['nested member'], 'nested aggregate') }),
+      ], 'aggregate rejection')
+    }
+    await ctx.loader.root.update([
+      { id: 'missing', name: 'cordis:missingBuiltin' },
+      { id: 'disabled', name: 'cordis:missingBuiltin', disabled: true },
+      { id: 'string', name: 'cordis:stringFailure' },
+      { id: 'aggregate', name: 'cordis:aggregateFailure' },
+    ])
+    expect(await inactiveRows(ctx.loader)).toEqual([
+      'missing (cordis:missingBuiltin): never started',
+      'string (cordis:stringFailure): string rejection',
+      'aggregate (cordis:aggregateFailure): aggregate rejection\n- first member\n- wrapped member\n  - nested member',
+    ])
+  })
+
   it('refuses to mount into a context that carries no agent scope', async () => {
     await expect(ctx.agentPresets.mount(ctx, 'standard'))
       .rejects.toThrow(/unscoped context/)
@@ -255,20 +278,13 @@ describe('rejecting a composition that cannot be used', () => {
   })
 
   it('names every failed row, not just the count', async () => {
-    // The Loader folds several failed rows into one AggregateError whose own
-    // message names none of them; unflattened, the operator is told only that
-    // "loader entries failed to apply" and has nothing to act on.
     await expect(agentOn(ctx, 'sess-two-broken', 'two-broken'))
       .rejects.toThrow(/first-refuses[\s\S]*second-refuses/)
   })
 
   it('names the rows inside a failed group, not the group alone', async () => {
-    // The Loader's per-row wrapper keeps only `cause.message`, so a group's
-    // own AggregateError arrives with its `errors` reachable through `cause`
-    // alone. Reading the message stops at "loader entries failed to apply"
-    // and names neither row that actually refused.
     await expect(agentOn(ctx, 'sess-nested-broken', 'nested-broken'))
-      .rejects.toThrow(/outer[\s\S]*inner-first[\s\S]*inner-second/)
+      .rejects.toThrow(/inner-first[\s\S]*inner-second/)
   })
 
   it('names the unresolved service when a row never activates', async () => {
@@ -357,6 +373,59 @@ describe('the preset roster', () => {
       .toEqual(['broken', 'isolated', 'late', 'leaky', 'minimal', 'nested-broken', 'not-a-preset', 'pending', 'standard', 'two-broken'])
     expect(listed.find(preset => preset.id === 'standard')?.trust).toBe('system')
     expect(listed.find(preset => preset.id === 'not-a-preset')?.broken).toMatch(/is missing/)
+  })
+
+  it('uses the profile package service when checking bare package rows', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-preset-profile-package-'))
+    roots.push(root)
+    const presetDir = join(root, 'profile-package')
+    await mkdir(presetDir)
+    await writeFile(join(presetDir, COMPOSITION_FILE), '- id: package\n  name: profile-package/plugin.js\n')
+    const scoped = await harness({
+      default: 'profile-package', roots: [{ path: root, trust: 'user' }],
+      includeShippedRoot: false, includeUserRoot: false,
+    })
+    const packageOf = vi.spyOn(scoped.pluginPackages, 'packageOf').mockReturnValue({
+      name: 'profile-package', version: '1.0.0', dir: presetDir,
+      manifestPath: join(presetDir, 'package.json'), manifest: {},
+    })
+
+    const [listed] = await scoped.agentPresets.list()
+    expect(listed).toMatchObject({ id: 'profile-package', trust: 'user' })
+    expect(listed?.broken).toBeUndefined()
+    expect(packageOf).toHaveBeenCalledWith('profile-package/plugin.js', pathToFileURL(FIXTURES).href + '/')
+  })
+
+  it('isolates a package lookup failure to the preset being checked', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-preset-package-failure-'))
+    roots.push(root)
+    await mkdir(join(root, 'healthy'))
+    await writeFile(join(root, 'healthy', COMPOSITION_FILE), '[]\n')
+    await mkdir(join(root, 'lookup-failure'))
+    await writeFile(
+      join(root, 'lookup-failure', COMPOSITION_FILE),
+      '- id: package\n  name: profile-package/plugin.js\n',
+    )
+    const scoped = await harness({
+      default: 'healthy', roots: [{ path: root, trust: 'user' }],
+      includeShippedRoot: false, includeUserRoot: false,
+    })
+    const packageOf = vi.spyOn(scoped.pluginPackages, 'packageOf').mockImplementation(() => {
+      throw new Error('profile package lookup failed')
+    })
+
+    const listed = await scoped.agentPresets.list()
+    expect(listed.find(preset => preset.id === 'lookup-failure')?.broken)
+      .toBe("the composition's plugins cannot be checked: profile package lookup failed")
+    expect(listed.find(preset => preset.id === 'healthy')?.broken).toBeUndefined()
+    await expect(agentOn(scoped, 'sess-after-package-failure')).resolves.toBeDefined()
+
+    packageOf.mockImplementation(() => {
+      throw 'raw profile package lookup failed'
+    })
+    const rawListed = await scoped.agentPresets.list()
+    expect(rawListed.find(preset => preset.id === 'lookup-failure')?.broken)
+      .toBe("the composition's plugins cannot be checked: raw profile package lookup failed")
   })
 
   it('exposes the configured default id', () => {

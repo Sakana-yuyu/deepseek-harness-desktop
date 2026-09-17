@@ -18,6 +18,6 @@ Importing a Client package — a value or a type — pulls its whole TypeScript 
 
 When a scenario needs a Client-owned constant or pure function, mirror it here instead, next to the commented-out import that names the source module. A drift then surfaces as a missed selector or a stale mirrored value — a loud failure, never a silent pass. `scaffold.ts` follows this rule for the welcome-notice namespace, acknowledgement field, version, and asserted Chinese copy.
 
-One kind of Client import stands. `assembled-boot.ts` drives the shell itself, so it imports `AppWebEntry` from `@deepseek-ai/dsh-client-web` and the boot-manifest type from `@deepseek-ai/dsh-client-modules/client`: booting the real shell is what that harness is for, and both packages are already in the Host graph. The chat scenarios mirror `conversationContextKey` in `support.ts` instead of importing its Client owner.
+The built-client harness is the exception. `assembled-boot.ts` imports `AppWebEntry`, the boot-manifest type, and `RemoteMock`; `assembled-remote.ts` imports the Client test runtime's default responses and `RemoteMock`. These packages are explicit project references for booting the real shell against a test-owned carrier. The chat scenarios mirror `conversationContextKey` in `support.ts` instead of importing its Client owner.
 
 Nothing mechanically enforces this rule; keep it in review.

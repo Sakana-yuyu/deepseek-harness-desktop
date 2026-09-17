@@ -252,7 +252,7 @@ describe('canonical event-local surface metadata', () => {
       expect(() => accept({ ...userEvent(), surfaceOp } as unknown as SessionEvent)).toThrow(/invalid replace surfaceOp/)
     })
 
-    it(path + ' requires markers and forbids non-surface and assistant provenance', () => {
+    it(path + ' requires markers and forbids non-surface and assistant source-event references', () => {
       const { surfaceOp: _op, ...markerless } = userEvent()
       expect(() => accept(markerless as SessionEvent)).toThrow(/requires a surfaceOp marker/)
       expect(() => accept({ type: 'turn/start', seq: SessionSeq(0), time: 1, data: { turn: 1 }, surfaceOp: 'append' } as never))
@@ -293,7 +293,7 @@ describe('canonical event-local surface metadata', () => {
     }
   })
 
-  it('requires system placement and preserves system data and provenance on head replacements', () => {
+  it('requires system placement and preserves system data and source-event references on head replacements', () => {
     const session = Session.create(id)
     const data = { turn: 1, step: 1, message: createSystemMessage('head', 'fixture'), extra: { nested: true } }
     const head = session.append('system/message', data, { surfaceOp: 'append' })
@@ -319,7 +319,7 @@ describe('canonical event-local surface metadata', () => {
     expect(snapshotSessionEvent(event)).toEqual(event)
   })
 
-  it('requires surface intent on event variants and forbids assistant provenance in types', () => {
+  it('requires surface intent on event variants and forbids assistant source-event references in types', () => {
     expectTypeOf<SurfaceEvent>().toEqualTypeOf<SessionEvent<SurfaceEventType>>()
     expectTypeOf<Omit<SessionEvent<'user/message'>, 'surfaceOp'>>().not.toExtend<SessionEvent<'user/message'>>()
     expectTypeOf<{ surfaceOp: 'append'; sourceEventSeqs: SessionSeq[] }>().not.toExtend<SurfaceIntent<'assistant/message'>>()

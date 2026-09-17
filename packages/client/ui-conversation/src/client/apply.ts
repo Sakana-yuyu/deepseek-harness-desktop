@@ -322,6 +322,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     children: {
       'conversation.input.attachments': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.overlay': { kind: 'list', scope: 'session' },
+      'conversation.input.permission': { kind: 'single', scope: 'session' },
       'conversation.input.left': { kind: 'list', scope: 'session' },
       'conversation.input.plan': { kind: 'single', scope: 'session' },
       'conversation.input.right': { kind: 'list', scope: 'session' },
@@ -338,7 +339,6 @@ export function apply(ctx: Context, config: Config = Config({})): void {
           retryFileUpload: undefined,
           toggleCommandMenu: undefined,
           stop: undefined,
-          command: undefined,
           hooks: {
             busyEnter: submissionPolicy.busyEnter,
             fileUploads: ABSENT_FILE_UPLOADS,
@@ -390,12 +390,6 @@ export function apply(ctx: Context, config: Config = Config({})): void {
           scopedConversation(sessions, sessionId).cancel().catch(() => {
             // Stop failure is published through Session promptError.
           })
-        },
-        command: async (line) => {
-          const session = sessions.binding(sessionId)?.session
-          if (session === undefined) return false
-          const result = await session.command(line)
-          return result.ok && result.value.matched
         },
         hooks: {
           busyEnter: submissionPolicy.busyEnter,

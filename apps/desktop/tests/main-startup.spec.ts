@@ -12,6 +12,7 @@ const harness = await vi.hoisted(async () => {
   }
   const windows: FakeWindow[] = []
   const hosts: FakeHost[] = []
+  const managerRuntimes: unknown[] = []
   const handlers = new Map<string, (event: { senderFrame: { url: string } }) => unknown>()
   let pluginsEnabled = false
   let preparing = deferred()
@@ -73,7 +74,7 @@ const harness = await vi.hoisted(async () => {
     }),
   })
   return {
-    windows, hosts, handlers, app, FakeWindow, FakeHost,
+    windows, hosts, managerRuntimes, handlers, app, FakeWindow, FakeHost,
     dialog: { showErrorBox: vi.fn(), showMessageBox: vi.fn() },
     applyRelease: vi.fn(() => { preparing.resolve(); return prepared.promise }),
     assertProfileRuntime: vi.fn(),
@@ -85,7 +86,7 @@ const harness = await vi.hoisted(async () => {
     get pluginsEnabled() { return pluginsEnabled },
     set pluginsEnabled(value: boolean) { pluginsEnabled = value },
     reset() {
-      windows.length = 0; hosts.length = 0; handlers.clear(); app.removeAllListeners()
+      windows.length = 0; hosts.length = 0; managerRuntimes.length = 0; handlers.clear(); app.removeAllListeners()
       app.isPackaged = true
       pluginsEnabled = false
       preparing = deferred(); prepared = deferred(); hostStarted = deferred()
@@ -110,6 +111,7 @@ vi.mock('../src/project-manager.ts', () => ({
     readonly applyRelease = harness.applyRelease
     readonly assertProfileRuntime = harness.assertProfileRuntime
     canRecoverProfile = harness.canRecoverProfile
+    constructor(_paths: unknown, runtime: unknown) { harness.managerRuntimes.push(runtime) }
     async mutate(_mutation: unknown, hooks: { beforeChange(): Promise<void>; afterChange(): Promise<void> }) {
       await hooks.beforeChange()
       harness.pluginsEnabled = false
@@ -299,10 +301,11 @@ describe('desktop main startup', () => {
     expect(harness.applyRelease).toHaveBeenCalledTimes(1)
     expect(harness.assertProfileRuntime).toHaveBeenCalledWith('desktop-test-profile')
     expect(harness.hosts[0]).toMatchObject({
-      node: join('desktop-test-resources', 'runtime', 'node', process.platform === 'win32' ? 'node.exe' : 'node'),
-      runtime: join('desktop-test-resources', 'dsh'),
+      node: process.execPath,
+      runtime: join(harness.app.getAppPath(), 'dsh'),
       profile: 'desktop-test-profile',
     })
+    expect(harness.managerRuntimes[0]).toMatchObject({ profileResolution: 'runtime' })
     expect(harness.hosts[0]!.start).toHaveBeenCalledTimes(1)
     expect(harness.windows).toHaveLength(1)
     expect(window.urls).toEqual(['dsh-app://shell/startup.html', 'dsh-app://app/index.html'])

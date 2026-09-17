@@ -8,7 +8,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { LlmRetryEventData } from '@deepseek-ai/dsh-llm-retry/types'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo/client'
-import type { ContextProvenanceView, KnownContextForm } from './context-provenance.ts'
+import type { ContextProducerView, KnownContextForm } from './context-producer.ts'
 export type { TodoItem }
 
 /** Request configuration recorded for one provider call. */
@@ -24,7 +24,7 @@ export interface AssistantRequestConfig {
 }
 
 /** Stable provider/model identity reported for one completed request. */
-export interface AssistantProvenanceView {
+export interface AssistantProviderMetadataView {
   provider: string
   model: string
 }
@@ -73,7 +73,7 @@ export interface AssistantMessageNode {
   step: number
   blocks: readonly AssistantBlock[]
   usage?: unknown
-  provenance?: AssistantProvenanceView
+  providerMetadata?: AssistantProviderMetadataView
   requestConfig?: AssistantRequestConfig
   /** Timing derived from the recorded step/chunk/message event sequence. */
   timing?: AssistantTiming
@@ -104,7 +104,7 @@ export interface ContextMessageNode {
   content: readonly ContentBlock[]
   source: unknown
   /** Role and producer name projected from `source` by the target. */
-  provenance: ContextProvenanceView
+  producer: ContextProducerView
   /** Producer-declared information form supported by the target; null presents as opaque. */
   form: KnownContextForm | null
 }
@@ -158,7 +158,7 @@ export interface ToolResultNode {
   /** Unix epoch ms from the tool/result session event. */
   time: number
   callId: string
-  /** Parent Tool call for a Code Dispatch result; absent on a root Session result. */
+  /** Parent Tool call for a PTC dispatch result; absent on a root Session result. */
   parentCallId?: string
   /** Call head backfilled from the in-window tool/call; null when window truncation left the call outside (card head shows callId). */
   call: { name: string; argsRaw: string } | null
@@ -166,7 +166,7 @@ export interface ToolResultNode {
   callTime: number | null
   content: readonly ContentBlock[]
   isError: boolean
-  error?: { name: string; code: string }
+  error?: { name: string; code: string; reason?: string }
   meta?: unknown
   /** Child calls owned by this call, in dispatch order. */
   subCalls: readonly ToolCallBlock[]
@@ -264,7 +264,7 @@ export type ConversationNode =
 /** In-flight tool card material: tool/call seen, tool/result not yet. */
 export interface RunningToolCall {
   callId: string
-  /** Parent Tool call for a Code Dispatch start; absent on a root Session call. */
+  /** Parent Tool call for a PTC dispatch start; absent on a root Session call. */
   parentCallId?: string
   name: string
   argsRaw: string

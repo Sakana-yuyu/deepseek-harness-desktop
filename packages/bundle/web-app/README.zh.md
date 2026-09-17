@@ -36,6 +36,10 @@ dsh --profile web --no-open --port 8080
 
 启动后你会看到 `dsh web:` 行，其根 URL 携带新的进程 token。除非 `--no-open` 或 SSH 会话抑制，否则默认浏览器会打开该 URL、取得签名 cookie，再重定向到不含认证参数的根页面。页面加载且你可以与 agent 对话，就说明成功了。两种可预期的失败：前端未构建时，启动会以构建提示停止（checkout 中运行 `pnpm run build`）；浏览器无法打开时，stderr 会打印不含凭据的诊断，但服务器会继续运行——请自行打开已打印的启动 URL。
 
+**设置 → 模型**显示 **DeepSeek**，使用 `DEEPSEEK_API_KEY`。默认模型为 `deepseek-official` / `deepseek-flash`（DeepSeek-V41-Flash）。[DeepSeek 插件](../../llm/llm-deepseek/README.zh.md#choose-a-protocol)默认使用 Messages；在 Cordis YAML 中设置 `protocol: chat-completions` 可选择 Chat Completions。Web 不提供协议选择器。
+
+已保存的模型选择优先于组合默认值。两种协议共用 `deepseek-official` 与 `llm-deepseek` 设置，因此切换协议不改变模型选择或复制凭据。端点覆盖保持原值；设置卡片允许用户填写兼容的 API 地址。
+
 ### 配置
 
 大多数用户不需要设置这些；命令行 flag 会提供给下面四个设置——`--host`、`--port` 与 `--trusted-host` 来自本次调用，`--no-open` 仅对本次调用关闭浏览器交接：
@@ -77,7 +81,7 @@ patch 会替换目标行的整个 `config`，因此每个 Web 行都重述自己
 
 ### 就绪宣告
 
-URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发起 RPC，浏览器一打开就请求页面，因此两者只在 Loader 配置树结算且 Connection 认证可用后运行——在没有 Loader 的手工构建树中则立即运行。启动中途被释放的树不会宣告任何内容。
+URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发起 RPC，浏览器一打开就请求页面，因此两者只在 Loader 配置树结算、通过 required 启动检查且 Connection 认证可用后运行——在没有 Loader 的手工构建树中则立即运行。此时 client combo JavaScript 和 source map 仍未物化。可选插件失败不会阻止就绪宣告；required 启动失败或启动中途被释放的树不会宣告任何内容。
 
 ### LAN 信任采样
 

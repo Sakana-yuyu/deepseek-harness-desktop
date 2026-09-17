@@ -83,7 +83,7 @@ describe('incremental DeepSeek session-log upload', () => {
     }>()
   })
 
-  it('uploads assistant provenance only through its embedded stream', async () => {
+  it('uploads Assistant provider metadata only through its embedded stream', async () => {
     const { ctx, session } = await harness('wire-assistant')
     const assistant = session.append('assistant/message', {
       turn: 1,
@@ -106,7 +106,7 @@ describe('incremental DeepSeek session-log upload', () => {
     }])
   })
 
-  it('uploads system append and replacement placement with unchanged data and provenance', async () => {
+  it('uploads system append and replacement placement with unchanged data and source-event references', async () => {
     const { ctx, session } = await harness('wire-system')
     const headData = { turn: 1, step: 1, message: createSystemMessage('head', 'fixture'), extra: { retained: true } }
     const head = session.append('system/message', headData, { surfaceOp: 'append' })
@@ -146,13 +146,13 @@ describe('incremental DeepSeek session-log upload', () => {
     }
   })
 
-  it('does not contribute the session log under its default configuration', async () => {
+  it('does not contribute the session log when explicitly disabled', async () => {
     const ctx = new Context()
     contexts.push(ctx)
     await ctx.plugin(SessionStore)
     await ctx.plugin(DeepSeekLlmApiExtensionRegistry)
-    await ctx.plugin(SessionLogDeepSeek)
-    const session = ctx.sessions.create(SessionId('default-off'))
+    await ctx.plugin(SessionLogDeepSeek, { enabled: false })
+    const session = ctx.sessions.create(SessionId('explicit-off'))
     session.append('turn/start', { turn: 1 })
 
     const prepared = await ctx.deepseekLlmApiExtensions.prepare({

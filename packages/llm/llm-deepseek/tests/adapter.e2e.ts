@@ -14,7 +14,7 @@ import LocalAttachments from '@deepseek-ai/dsh-attachment-local'
 import type {
   ImageAttachmentLimits,
   ImageAttachmentRef,
-  ImageRequestPolicy,
+  ImageRequestTarget,
   RequestImageAttachment,
   SaveImageAttachment,
   StoredImageAttachment,
@@ -26,7 +26,7 @@ import * as PluginPackageInventoryDeepSeek from '@deepseek-ai/dsh-plugin-package
 import * as SessionLogDeepSeek from '@deepseek-ai/dsh-session-log-deepseek'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import type { Config } from '@deepseek-ai/dsh-llm-deepseek'
-import type { WireMessage, WireRequest } from '../src/types.ts'
+import type { WireMessage, WireRequest } from '../src/protocols/chat-completions/types.ts'
 import { assemble, type AssembledResult } from './assemble.ts'
 
 /**
@@ -92,7 +92,7 @@ class E2eAttachmentStore extends AttachmentStore {
 
   override readImageRequest(
     _ref: ImageAttachmentRef,
-    _policy: ImageRequestPolicy,
+    _target: ImageRequestTarget,
     _signal?: AbortSignal,
   ): Promise<RequestImageAttachment> {
     return Promise.resolve(this.version)
@@ -110,6 +110,8 @@ async function harness(model: string, config: Partial<Config> = {}) {
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(E2eAttachmentStore)
   await ctx.plugin(LlmDeepSeek, {
+    protocol: 'chat-completions',
+    baseURL: LlmDeepSeek.PUBLIC_BASE_URL,
     ...model === VISION ? { models: [{ id: VISION, inputModalities: ['text', 'image'] }] } : {},
     ...config,
   })
@@ -153,7 +155,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', ()
     contexts.push(ctx)
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(LocalAttachments)
-    await ctx.plugin(LlmDeepSeek, { maxTokens: 4096 })
+    await ctx.plugin(LlmDeepSeek, { protocol: 'chat-completions', baseURL: LlmDeepSeek.PUBLIC_BASE_URL, maxTokens: 4096 })
     const model = 'deepseek-flash'
     await expect(ctx.llm.resolveModelInfo('deepseek-official', model)).resolves.toMatchObject({
       inputModalities: ['text', 'image'], systemPromptUpdate: 'in-history',
@@ -180,7 +182,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', ()
   it.skipIf(!VISION_E2E_ENABLED)('uses the built-in official route to upload, reference, and delete one image', async () => {
     const key = process.env.DEEPSEEK_API_KEY
     if (key === undefined) throw new Error('e2e ran without DEEPSEEK_API_KEY')
-    const baseURL = process.env.DEEPSEEK_BASE_URL ?? LlmDeepSeek.PUBLIC_BASE_URL
+    const baseURL = LlmDeepSeek.PUBLIC_BASE_URL
     const ctx = await harness(VISION, { baseURL })
     await ctx.plugin(E2eAttachmentStore)
     const attachments = ctx.attachments as E2eAttachmentStore
@@ -197,7 +199,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', ()
       return response
     }
     vi.stubGlobal('fetch', observedFetch)
-    const files = new LlmDeepSeek.DeepSeekFilesClient({ baseURL, apiKey: key })
+    const files = new LlmDeepSeek.DeepSeekFilesClient({ protocol: 'chat-completions', baseURL, apiKey: key })
 
     try {
       const result = await assemble(ctx, {
@@ -232,7 +234,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', ()
     await ctx.plugin(DeepSeekLlmApiExtensionRegistry)
     await ctx.plugin(SessionLogDeepSeek, { enabled: true })
     await ctx.plugin(PluginPackageInventoryDeepSeek)
-    await ctx.plugin(LlmDeepSeek, { thinking: 'disabled' })
+    await ctx.plugin(LlmDeepSeek, { protocol: 'chat-completions', baseURL: LlmDeepSeek.PUBLIC_BASE_URL, thinking: 'disabled' })
     const session = ctx.sessions.create(SessionId('real-extension-fields'))
     session.append('turn/start', { turn: 1 })
 
@@ -262,7 +264,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', ()
       contexts.push(ctx)
       await ctx.plugin(LlmRuntime)
       await ctx.plugin(LocalCredentialProvider, { path: join(dir, '.credentials.yaml'), watch: false })
-      await ctx.plugin(LlmDeepSeek, {})
+      await ctx.plugin(LlmDeepSeek, { protocol: 'chat-completions', baseURL: LlmDeepSeek.PUBLIC_BASE_URL })
 
       const result = await assemble(ctx, {
         model: FLASH,

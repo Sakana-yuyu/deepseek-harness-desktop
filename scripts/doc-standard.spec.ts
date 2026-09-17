@@ -42,6 +42,9 @@ const KIND_TEMPLATES: Readonly<Record<string, string>> = {
   'package-reference': '.agents/skills/dsh-doc/templates/package-reference.md',
   'package-library': '.agents/skills/dsh-doc/templates/package-library.md',
   'package-bundle': '.agents/skills/dsh-doc/templates/package-bundle.md',
+  'persistence-change': '.agents/skills/dsh-doc/templates/persistence-change.md',
+  'persistence-release': '.agents/skills/dsh-doc/templates/persistence-release.md',
+  'persistence-format': '.agents/skills/dsh-doc/templates/persistence-format.md',
 }
 
 /**
@@ -51,6 +54,7 @@ const KIND_TEMPLATES: Readonly<Record<string, string>> = {
  * library; the check re-derives the entry shape so a stale entry fails loud.
  */
 const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
+  'packages/experimental/browser-use-runtime': 'Provider-owned browser resource management and MCP integration helpers; no plugin entry.',
   'packages/boot/app-boot': 'Boot library the app bins import; plain helper exports.',
   'packages/boot/cmdline': 'Command-line library the app bins import; plain module exports.',
   'packages/client/store': 'Browser-side state primitives; plain function/type exports.',
@@ -88,6 +92,7 @@ const PACKAGE_LIBRARIES: Readonly<Record<string, string>> = {
   'packages/util/chunked-list': 'Persistent collection operations and checkpoint validation without a plugin surface.',
   'packages/util/home-paths': 'Zero-dependency harness-home path resolver.',
   'packages/util/launch-environment': 'Zero-dependency environment resolver.',
+  'packages/util/lazy-require': 'Caller-relative CommonJS-compatible dependency loader.',
   'packages/util/native-command': 'Host-side subprocess runner utility.',
   'packages/util/output-retention': 'Zero-dependency retention utility.',
   'packages/util/package-manifest': 'Shared package manifest declarations with type-only exports.',
@@ -154,7 +159,7 @@ interface SessionFormatRelease {
   evidenceTag: string
 }
 
-/** Validate the release record and evidence links; throw on malformed or inconsistent input. */
+/** Validate release metadata and tagged writer evidence; throw on malformed or inconsistent input. */
 function validateSessionFormatRelease(source: string, currentWriterVersion: number): SessionFormatRelease {
   const normalized = source.replaceAll('\r\n', '\n')
   const openings = [...normalized.matchAll(/^```yaml session-format-release[ \t]*$/gmu)]
@@ -181,34 +186,28 @@ function validateSessionFormatRelease(source: string, currentWriterVersion: numb
     || !/^dsh-v\d+\.\d+\.\d+(?:-[\dA-Za-z]+(?:[.-][\dA-Za-z]+)*)?(?:\+[\dA-Za-z]+(?:[.-][\dA-Za-z]+)*)?$/u.test(evidenceTag)) {
     throw new Error('evidenceTag must be a non-empty dsh-v version tag without URL delimiters')
   }
-  const repository = 'https://github.com/deepseek-harness/deepseek-harness'
-  for (const link of [
-    `${repository}/releases/tag/${evidenceTag}`,
-    `${repository}/blob/${evidenceTag}/packages/core/session/src/types.ts`,
-  ]) {
-    if (!normalized.includes(`](${link})`)) throw new Error(`Missing matching evidence link: ${link}`)
-  }
+  const hasEvidence = normalized.split('\n').some(line =>
+    line.includes(`\`${evidenceTag}\``) && line.includes('`packages/core/session/src/types.ts`'))
+  if (!hasEvidence) throw new Error('Missing matching evidence tag and tagged writer path')
   return { latestReleasedVersion, evidenceTag }
 }
 
-function sessionFormatReleaseFixture(): { record: SessionFormatRelease; body: string; links: string; source: string } {
+function sessionFormatReleaseFixture(): { record: SessionFormatRelease; body: string; evidence: string; source: string } {
   const record = validateSessionFormatRelease(
     readFileSync(resolve(root, 'docs/session-format-status.md'), 'utf8'),
     readCurrentSessionFormatVersion(root),
   )
   const body = `latestReleasedVersion: ${record.latestReleasedVersion}\nevidenceTag: ${record.evidenceTag}`
-  const repository = 'https://github.com/deepseek-harness/deepseek-harness'
-  const links = `[release](${repository}/releases/tag/${record.evidenceTag})\n`
-    + `[source](${repository}/blob/${record.evidenceTag}/packages/core/session/src/types.ts)`
-  return { record, body, links, source: releaseDocument(body, links) }
+  const evidence = `Evidence: published product tag \`${record.evidenceTag}\`; tagged writer: \`packages/core/session/src/types.ts\`.`
+  return { record, body, evidence, source: releaseDocument(body, evidence) }
 }
 
-function releaseDocument(body: string, links: string): string {
-  return `\`\`\`yaml session-format-release\n${body}\n\`\`\`\n\n${links}\n`
+function releaseDocument(body: string, evidence: string): string {
+  return `\`\`\`yaml session-format-release\n${body}\n\`\`\`\n\n${evidence}\n`
 }
 
 describe('Session format release authority', () => {
-  it('keeps the bilingual release records equal and consistent with the writer and evidence links', () => {
+  it('keeps bilingual release metadata consistent with the writer and tagged evidence', () => {
     const records = ['docs/session-format-status.md', 'docs/session-format-status.zh.md'].map(file =>
       validateSessionFormatRelease(readFileSync(resolve(root, file), 'utf8'), readCurrentSessionFormatVersion(root)),
     )
@@ -216,33 +215,33 @@ describe('Session format release authority', () => {
   })
 
   it('accepts a released writer and a newer development writer, including format zero', () => {
-    const { record, body, links, source } = sessionFormatReleaseFixture()
+    const { record, body, evidence, source } = sessionFormatReleaseFixture()
     expect(validateSessionFormatRelease(source, record.latestReleasedVersion)).toEqual(record)
     expect(validateSessionFormatRelease(source, record.latestReleasedVersion + 1)).toEqual(record)
-    const zero = releaseDocument(body.replace(`latestReleasedVersion: ${record.latestReleasedVersion}`, 'latestReleasedVersion: 0'), links)
+    const zero = releaseDocument(body.replace(`latestReleasedVersion: ${record.latestReleasedVersion}`, 'latestReleasedVersion: 0'), evidence)
     expect(validateSessionFormatRelease(zero, 0)).toEqual({ ...record, latestReleasedVersion: 0 })
   })
 
   it('rejects missing, duplicated, unclosed, and malformed release records', () => {
-    const { record, body, links, source } = sessionFormatReleaseFixture()
+    const { record, body, evidence, source } = sessionFormatReleaseFixture()
     for (const invalid of [
-      links,
+      evidence,
       source + source,
       source + '\n```yaml session-format-release\n',
       `\`\`\`yaml session-format-release\n${body}`,
-      releaseDocument('[unterminated', links),
-      releaseDocument('', links),
-      releaseDocument('null', links),
-      releaseDocument('scalar', links),
-      releaseDocument(`- latestReleasedVersion: ${record.latestReleasedVersion}`, links),
-      releaseDocument(`${body}\n---\n${body}`, links),
+      releaseDocument('[unterminated', evidence),
+      releaseDocument('', evidence),
+      releaseDocument('null', evidence),
+      releaseDocument('scalar', evidence),
+      releaseDocument(`- latestReleasedVersion: ${record.latestReleasedVersion}`, evidence),
+      releaseDocument(`${body}\n---\n${body}`, evidence),
     ]) {
       expect(() => validateSessionFormatRelease(invalid, record.latestReleasedVersion), invalid).toThrow()
     }
   })
 
   it('rejects missing, duplicate, and extra record fields', () => {
-    const { record, body, links } = sessionFormatReleaseFixture()
+    const { record, body, evidence } = sessionFormatReleaseFixture()
     for (const invalid of [
       '{}',
       `evidenceTag: ${record.evidenceTag}`,
@@ -251,45 +250,46 @@ describe('Session format release authority', () => {
       `${body}\nevidenceTag: ${record.evidenceTag}`,
       `${body}\nreleased: true`,
     ]) {
-      expect(() => validateSessionFormatRelease(releaseDocument(invalid, links), record.latestReleasedVersion), invalid).toThrow()
+      expect(() => validateSessionFormatRelease(releaseDocument(invalid, evidence), record.latestReleasedVersion), invalid).toThrow()
     }
   })
 
   it('rejects invalid released versions and releases beyond the current writer', () => {
-    const { record, links } = sessionFormatReleaseFixture()
+    const { record, evidence } = sessionFormatReleaseFixture()
     for (const value of ['-1', '1.5', String(Number.MAX_SAFE_INTEGER + 1), '.inf', '.nan', 'null', 'true', '"0"']) {
-      const source = releaseDocument(`latestReleasedVersion: ${value}\nevidenceTag: ${record.evidenceTag}`, links)
+      const source = releaseDocument(`latestReleasedVersion: ${value}\nevidenceTag: ${record.evidenceTag}`, evidence)
       expect(() => validateSessionFormatRelease(source, Number.MAX_SAFE_INTEGER), value).toThrow('non-negative safe integer')
     }
     const writer = readCurrentSessionFormatVersion(root)
-    const future = releaseDocument(`latestReleasedVersion: ${writer + 1}\nevidenceTag: ${record.evidenceTag}`, links)
+    const future = releaseDocument(`latestReleasedVersion: ${writer + 1}\nevidenceTag: ${record.evidenceTag}`, evidence)
     expect(() => validateSessionFormatRelease(future, writer)).toThrow('must not exceed the current writer')
   })
 
   it('rejects empty, malformed, and URL-injecting evidence tags', () => {
-    const { record, links } = sessionFormatReleaseFixture()
+    const { record, evidence } = sessionFormatReleaseFixture()
     for (const tag of [
       null, true, 1, '', ' ', 'dsh-v', record.evidenceTag.replace('dsh-v', 'v'),
       `${record.evidenceTag}/other`, `${record.evidenceTag}?query`, `${record.evidenceTag}#fragment`,
       `${record.evidenceTag}%2Fother`, `${record.evidenceTag})`, `${record.evidenceTag}\n`,
     ]) {
-      const source = releaseDocument(`latestReleasedVersion: ${record.latestReleasedVersion}\nevidenceTag: ${JSON.stringify(tag)}`, links)
+      const source = releaseDocument(`latestReleasedVersion: ${record.latestReleasedVersion}\nevidenceTag: ${JSON.stringify(tag)}`, evidence)
       expect(() => validateSessionFormatRelease(source, record.latestReleasedVersion), String(tag)).toThrow('dsh-v version tag')
     }
   })
 
-  it('rejects absent or mismatched release and tagged-source links', () => {
-    const { record, body, links } = sessionFormatReleaseFixture()
+  it('rejects absent or mismatched release tags and tagged writer paths', () => {
+    const { record, body, evidence } = sessionFormatReleaseFixture()
     for (const invalid of [
       '',
-      links.replace(`/releases/tag/${record.evidenceTag}`, `/releases/tag/${record.evidenceTag}-other`),
-      links.replace(`/blob/${record.evidenceTag}/`, '/blob/main/'),
-      links.replace('/packages/core/session/src/types.ts', '/packages/core/session/src/other.ts'),
-      links.replaceAll('github.com', 'example.com'),
-      links.replace(`${record.evidenceTag})`, `${record.evidenceTag}?query)`),
-      links.replace('types.ts)', 'types.ts#fragment)'),
+      evidence.replace(record.evidenceTag, `${record.evidenceTag}-other`),
+      evidence.replace(record.evidenceTag, 'main'),
+      evidence.replace('packages/core/session/src/types.ts', 'packages/core/session/src/other.ts'),
+      evidence.replace(record.evidenceTag, `${record.evidenceTag}?query`),
+      evidence.replace('types.ts', 'types.ts#fragment'),
+      evidence.replace('; tagged writer:', ';\n tagged writer:'),
     ]) {
-      expect(() => validateSessionFormatRelease(releaseDocument(body, invalid), record.latestReleasedVersion), invalid).toThrow('Missing matching evidence link')
+      expect(() => validateSessionFormatRelease(releaseDocument(body, invalid), record.latestReleasedVersion), invalid)
+        .toThrow('Missing matching evidence tag and tagged writer path')
     }
   })
 })
@@ -347,6 +347,37 @@ describe('dsh-doc skill consolidation', () => {
     for (const file of files) {
       const metadata = readFrontmatter(file)
       expect(packageReadmeMetadataErrors(file, metadata), file).toEqual([])
+    }
+  })
+
+  it('maps persistence transition records to their dedicated document kind', () => {
+    const files = globSync('docs/persistence-changes/*.md', { cwd: root })
+      .filter(file => !/\/README(?:\.zh)?\.md$/u.test(file.replaceAll('\\', '/')))
+    expect(files.length).toBeGreaterThan(0)
+    for (const file of files) {
+      const metadata = readFrontmatter(file)
+      expect(metadata.kind, file).toBe('persistence-change')
+      expect(typeof metadata.description === 'string' && metadata.description.trim().length > 0, file).toBe(true)
+    }
+  })
+
+  it('maps retrospective release comparisons to their dedicated document kind', () => {
+    const files = globSync('docs/persistence-changes/releases/dsh-*.md', { cwd: root })
+    expect(files.length).toBeGreaterThan(0)
+    for (const file of files) {
+      const metadata = readFrontmatter(file)
+      expect(metadata.kind, file).toBe('persistence-release')
+      expect(typeof metadata.description === 'string' && metadata.description.trim().length > 0, file).toBe(true)
+    }
+  })
+
+  it('maps historical Session format references to their dedicated document kind', () => {
+    const files = globSync('docs/persistence-changes/historical-formats/v*.md', { cwd: root })
+    expect(files.length).toBe(readCurrentSessionFormatVersion(root) * 2)
+    for (const file of files) {
+      const metadata = readFrontmatter(file)
+      expect(metadata.kind, file).toBe('persistence-format')
+      expect(typeof metadata.description === 'string' && metadata.description.trim().length > 0, file).toBe(true)
     }
   })
 

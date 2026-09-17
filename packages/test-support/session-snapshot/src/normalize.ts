@@ -445,7 +445,7 @@ export function normalizeSessionSnapshots(
   const currentLogs = rawLogs.map(log => hasSessionFormatVersion(log)
     ? prepareSessionSnapshotFixtureForComparison(log)
     : log)
-  const comparableLogs = currentLogs.map(normalizeSessionFormatProvenance)
+  const comparableLogs = currentLogs.map(normalizeSessionFormatMetadata)
   return redactSessionSnapshotIds(comparableLogs).map(log => projectSessionSnapshot(
     scrubSessionSnapshot(normalizeSessionLog(
       log,
@@ -461,7 +461,7 @@ export function normalizeSessionSnapshots(
  * @param rawLog - Session records or events as compact JSON lines.
  * @returns the same records with only the Session header version omitted.
  */
-export function normalizeSessionFormatProvenance(rawLog: string): string {
+export function normalizeSessionFormatMetadata(rawLog: string): string {
   return rawLog.split('\n').map((line) => {
     if (line.trim().length === 0) return line
     const record = JSON.parse(line) as Record<string, unknown>

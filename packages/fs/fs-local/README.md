@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use `dsh-fs-local` to read, list, atomically write, and edit files on the host filesystem. Relative paths resolve from a configurable base directory, while absolute paths and parent traversal remain unrestricted. Paths and symlinks that reach the same file share one identity. Writes preserve file permissions, and optional version guards reject stale overwrites. Choose this package for direct host access; use `fs-sandbox` for confined mutations or `fs-e2b` for files in a remote execution world.
+Use `dsh-fs-local` to read, list, atomically write, and edit files on the host filesystem. Relative paths resolve from a configurable base directory, while absolute paths and parent traversal remain unrestricted. Paths and symlinks that reach the same file share one identity. Writes preserve file permissions, and optional version guards reject stale overwrites. Choose this package for direct host access; use `fs-sandbox` for confined mutations.
 
 ## Table of Contents
 
@@ -29,11 +29,11 @@ Mount this backend when a composition needs `ctx.fs` backed by the real host fil
 
 ### When to choose it
 
-Choose `fs-local` for ordinary host-file access in a single process. Choose [`fs-sandbox`](../fs-sandbox/README.md) when a session's writes and edits must be confined to its workspace and temp roots — it extends this backend and adds only the mode fence. Choose [`fs-e2b`](../../e2b/fs-e2b/README.md) when files must live in a remote execution world shared with subprocesses. `config.cwd` is a resolution default, not a containment boundary: absolute paths and `..` escape it.
+Choose `fs-local` for ordinary host-file access in a single process. Choose [`fs-sandbox`](../fs-sandbox/README.md) when a session's writes and edits must be confined to its workspace and temp roots — it extends this backend and adds only the mode fence. `config.cwd` is a resolution default, not a containment boundary: absolute paths and `..` escape it.
 
 ### Minimal configuration
 
-Load the backend with a base directory; relative paths resolve against it, and absolute paths ignore it.
+Load the backend with a base directory; relative paths resolve against it, and absolute paths ignore it. A relative base is anchored to the provider process working directory, and display paths remain absolute. On POSIX, resolution follows filesystem semantics before lexical normalization: `symlink/..` reaches the parent of the link target, including when the final file does not exist yet. Directory listings preserve the same physical traversal in displayed child paths. Windows retains native drive-relative normalization.
 
 ```yaml
 - name: '@deepseek-ai/dsh-fs-local'

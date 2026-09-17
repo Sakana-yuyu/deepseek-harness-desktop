@@ -6,7 +6,7 @@ English | [中文](2026-07-24-web-gui-browser-e2e-lane.zh.md)
 
 ## Problem
 
-The web GUI ships as a real assembled chain — chromium page → client plugin bundles → HTTP unary RPC + two SSE streams → `toFetchHandler`/apiproxy → the host agent loop, tools, and JSONL persistence — and no test exercised that chain keylessly and deterministically. The [GUI testing system](../process/2026-07-20-gui-testing-system.md) covers tier 1 (wire isomorphism in node), tier 2 (object-layer state machines), and tier-3 smokes, but the keyless smoke drives `FixtureApiClient` — no host, no wire, no agent loop — while the full-chain smoke needs `DEEPSEEK_API_KEY` and a live model, so it is nondeterministic and self-skips in keyless CI. The snapshot philosophy of [docs/testing.md](../../../../docs/testing.md) — record once with a key, replay forever keyless, refresh on format churn — already covers the ACP, headless `stream-json`, and TUI transcript surfaces; the web surface was the one assembled product shape without it. The gap is exactly where the two confirmed GUI P0s hid: the wire carriage chain the fixture client short-circuits.
+The web GUI ships as a real assembled chain — chromium page → client plugin bundles → HTTP unary RPC + two SSE streams → `toFetchHandler`/apiproxy → the host agent loop, tools, and JSONL persistence — and no test exercised that chain keylessly and deterministically. The [GUI testing system](../process/2026-07-20-gui-testing-system.md) covers tier 1 (wire isomorphism in node), tier 2 (object-layer state machines), and tier-3 smokes, but the former keyless smoke drove a standalone client fixture — no host, no wire, no agent loop — while the full-chain smoke needed `DEEPSEEK_API_KEY` and a live model, so it was nondeterministic and self-skipped in keyless CI. The snapshot philosophy of [docs/testing.md](../../../../docs/testing.md) — record once with a key, replay forever keyless, refresh on format churn — already covered the ACP, headless `stream-json`, and TUI transcript surfaces; the web surface was the one assembled product shape without it. The gap is exactly where the two confirmed GUI P0s hid: the wire carriage chain the standalone fixture short-circuited.
 
 ## Decision
 
@@ -64,7 +64,7 @@ Surveyed AI-chat/agent web UIs and mocking layers (LibreChat, vercel/ai-chatbot 
 
 **Mock HTTP provider at `DEEPSEEK_BASE_URL`.** Rejected as the lane's mechanism (kept for the one existing workspace-probe smoke): fixtures become hand-authored OpenAI SSE byte scripts, a second fixture format that drifts from the session-log format the rest of the repo records and replays; the adapter's real HTTP path is with-key e2e's job.
 
-**Growing the `?fixture` client.** Rejected: tier separation — `FixtureApiClient` exists to test the client shell without a server; everything below the client API boundary stays untested by construction.
+**Keeping or growing a `?fixture` client.** Rejected: client-only assembly tests inject `RemoteMock`, while behavior that depends on a Host runs through the real scaffold. A production query switch would retain a second application backend and still leave everything below the Client API untested.
 
 **Placeholder `DEEPSEEK_API_KEY` + replay interception instead of disabling the adapter row.** Rejected despite zero composition change and two in-tree precedents: it satisfies `llm-deepseek`'s fail-loud key check with a lie and leaves a dead adapter mounted-but-intercepted; the disabled row (the ACP overlay's move) is honest keylessness and fails loud at the earliest resolvable point.
 

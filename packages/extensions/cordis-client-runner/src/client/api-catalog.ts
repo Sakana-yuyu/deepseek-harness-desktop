@@ -360,6 +360,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'sessionId', description: 'Session to archive.' }],
       },
       {
+        signature: 'unarchiveSession(sessionId: SessionId): Promise<void>',
+        description: 'Unarchive a Session, restoring it to its recorded Workspace position.',
+        parameters: [{ name: 'sessionId', description: 'Session to unarchive.' }],
+      },
+      {
         signature: 'pickDirectory(): Promise<string | null>',
         description: 'Open the Host-native directory picker.',
         parameters: [],
@@ -405,6 +410,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'archiveSession(sessionId: SessionId): Promise<void>',
         description: 'Archive a Session from Workspace grouping surfaces.',
         parameters: [{ name: 'sessionId', description: 'Session to archive.' }],
+      },
+      {
+        signature: 'unarchiveSession(sessionId: SessionId): Promise<void>',
+        description: 'Unarchive a Session from the archived Session list.',
+        parameters: [{ name: 'sessionId', description: 'Session to unarchive.' }],
       },
       {
         signature: 'insertSessionBefore( workspaceId: WorkspaceId, sessionId: SessionId, beforeSessionId?: SessionId, ): Promise<WorkspaceView>',

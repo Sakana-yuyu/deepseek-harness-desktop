@@ -81,9 +81,9 @@ This section explains the design decisions behind the contract and points at the
 
 ### Design philosophy
 
-- **Same-world by contract.** `ctx.sandbox` wraps argv under a host-path file policy; containers, microVMs, and remote execution replace the surrounding capability seam instead.
+- **One execution world.** The filesystem, subprocess and sandbox providers operate on the same filesystem and kernel. Remote compositions replace all three providers; confinement resolves asynchronously in that world.
 - **Policy rides the call.** `SandboxPolicy` is carried per call, never fixed on the provider: two consumers may confine under different policies at the same instant, and an escalated retry is a new call with a wider policy. Defaulting and resolution are explicit consumer steps.
-- **Fail closed.** `confine()` returns enforcing argv or throws `SandboxUnavailableError`; silent unconfined passthrough is forbidden, and functional probes arbitrate multi-runner chains.
+- **Fail closed.** `confine()` resolves to enforcing argv or rejects with `SandboxUnavailableError`; silent unconfined passthrough is forbidden, and functional probes arbitrate multi-runner chains.
 - **One vocabulary for denial and escalation.** The marker and hint texts and the strictly-wider ladder live here so the bash and fs families cannot drift apart.
 
 ### Source map

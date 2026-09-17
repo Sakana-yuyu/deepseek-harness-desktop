@@ -7,7 +7,7 @@ import type { MessageId, ToolCallId } from './brand.ts'
 import type { ContentBlock, ToolResultBlock } from './types.ts'
 
 /** Provider/model identity and adapter-private replay data for an assistant message. */
-export interface AssistantProvenance {
+export interface AssistantProviderMetadata {
   /** Provider route that produced the message. */
   provider: string
   /** Provider model id that produced the message. */
@@ -21,7 +21,7 @@ export interface AssistantProvenance {
 }
 
 /** Required source of an assistant message produced by a routed model. */
-export interface ModelMessageSource extends AssistantProvenance {
+export interface ModelMessageSource extends AssistantProviderMetadata {
   kind: 'model'
 }
 
@@ -33,7 +33,7 @@ export interface ToolMessageSource {
 
 /**
  * The kind of information in producer-supplied context, declared by the
- * producer beside its provenance.
+ * producer in the same `MessageSource`.
  *
  * `MessageSource.kind` answers *who produced this*; `form` answers *what kind
  * of thing it is*, and the two axes are deliberately independent — several

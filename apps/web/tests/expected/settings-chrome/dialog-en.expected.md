@@ -13,6 +13,9 @@
     - button "Agent presets":
       - img
       - text: Agent presets
+    - button "Archived sessions":
+      - img
+      - text: Archived sessions
   - button "Open configuration file"
   - button "Close":
     - img

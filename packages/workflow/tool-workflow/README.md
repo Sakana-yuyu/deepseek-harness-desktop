@@ -58,7 +58,7 @@ This section explains how the consumer is split from the engine and how the run 
 
 ### Design concept
 
-The consumer owns the model-facing schema, the `tool:<toolName>` system-prompt guidance, and the result envelope; script parsing, execution, caps, and cancellation live behind `ctx.workflowEngine`, so a hardened engine swaps in without changing what the model sees. Usage guidance ships with the tool plugin as a prompt section, never in the deployment persona.
+The consumer owns the model-facing schema, the `tool:<toolName>` system-prompt guidance, and the result envelope; script parsing, execution, caps, and cancellation live behind `ctx.workflowEngine`, while the PTC engine shares Node process confinement with `run_code`. Usage guidance ships with the tool plugin as a prompt section, never in the deployment persona.
 
 ### Run lifecycle
 
@@ -91,7 +91,7 @@ Read these pages when the tool-level contract is not enough. They move from the 
 
 - [Workflow subsystem](../../../docs/subsystems/workflow.md) — the seam contract, start request, and event payloads.
 - [Workflow seam](../workflow/README.md) — the run and result vocabulary behind the tool.
-- [Worker-thread engine](../workflow-worker-thread/README.md) — the engine that executes the scripts.
+- [PTC workflow engine](../workflow-ptc/README.md) — the engine that executes the scripts.
 - [subagent tool](../../subagent/tool-subagent/README.md) — the plain-delegation alternative for one or two children.
 - [Group map](../README.md) — the workflow capability family and its packages.
 - [Dynamic workflows Agent Note](../../../.agents/notes/implemented/feature/2026-07-05-dynamic-workflows.md) — the seam design and its decisions.

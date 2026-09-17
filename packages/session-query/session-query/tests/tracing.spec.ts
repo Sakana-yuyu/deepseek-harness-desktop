@@ -477,7 +477,7 @@ describe('session event tracing', () => {
       { ...appendEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 1, endSeq: 1 } },
     ]],
   ] as const)('rejects an invalid surface log: %s', async (_name, rawEvents) => {
-    const durable = header('invalid-provenance')
+    const durable = header('invalid-source-reference')
     const events = structuredClone(rawEvents) as unknown as SessionEvent[]
     TracePersistence.reset([{ meta: durable, events }])
     const ctx = await queryContext()

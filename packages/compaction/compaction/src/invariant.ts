@@ -295,7 +295,7 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       openTurn: null,
       compaction: undefined,
       surfaceEvents,
-      surface: new SurfaceManager(surfaceEvents),
+      surface: new SurfaceManager(surfaceEvents, undefined, ctx.sessions.messageProjections),
     }
     traces.set(session, trace)
     // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.

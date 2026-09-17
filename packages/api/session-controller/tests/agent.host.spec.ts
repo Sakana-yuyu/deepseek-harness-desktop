@@ -172,7 +172,7 @@ describe('ApiSession Agent lookup and recovery', () => {
   it('projects live Agent contexts and maps missing cold identities through Typert lookup failures', async () => {
     const { ctx } = await harness()
     const live = agent(ctx, header('live'))
-    ctx.agents.register(live)
+    await ctx.agents.register(live)
     providePersistence(ctx, {
       list: () => Promise.resolve([]),
       inspect: vi.fn(),
@@ -193,7 +193,7 @@ describe('ApiSession Agent lookup and recovery', () => {
     })
     const winner = agent(ordinary.ctx, ordinaryMeta)
     vi.spyOn(ordinary.ctx.agents, 'resume').mockImplementation(async () => {
-      ordinary.ctx.agents.register(winner)
+      await ordinary.ctx.agents.register(winner)
       throw new Error('raced publication')
     })
     await expect(ordinary.agents.resolveAgent(ordinaryMeta.id)).resolves.toEqual({ agent: winner })
@@ -326,7 +326,7 @@ describe('ApiSession create or adoption', () => {
     const ordinaryMeta = header('create-race', cwd)
     const winner = agent(ordinary.ctx, ordinaryMeta)
     vi.spyOn(ordinary.ctx.agents, 'create').mockImplementation(async () => {
-      ordinary.ctx.agents.register(winner)
+      await ordinary.ctx.agents.register(winner)
       throw new Error('raced creation')
     })
     await expect(ordinary.agents.ensureSession(ordinaryMeta.id, cwd, false))

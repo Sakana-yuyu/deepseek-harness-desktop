@@ -63,16 +63,16 @@ export interface WebBootEntry {
   external?: string[]
 }
 
-/** Initial scheduling phase for one content-addressed combo script. */
+/** Initial scheduling phase for one revisioned combo script. */
 export type WebBootBatchPhase = 'bootstrap' | 'application'
 
 /** One initial combo script; a scheduling phase may span several descriptors. */
 export interface WebBootBatch {
   /** Parser-blocking bootstrap or preloaded application scheduling. */
   phase: WebBootBatchPhase
-  /** Content-addressed combo script endpoint. */
+  /** Revisioned combo script endpoint. */
   url: string
-  /** Revision over the combined plugin script bytes and indexed source map. */
+  /** Revision derived from the ordered entry revisions. */
   rev: string
   /** Graph entry ids whose factories the script registers, in execution order. */
   entries: string[]
@@ -80,7 +80,7 @@ export interface WebBootBatch {
 
 /** The composed client entry graph the host injects as `window.__DSH_BOOT__`. */
 export interface WebBootGraph {
-  /** Consistency anchor over the whole graph (content + bundle hashes). */
+  /** Consistency anchor over the current entry and batch descriptors. */
   rev: string
   /**
    * Composed entries in module-graph order — a dynamic package row precedes
@@ -98,7 +98,7 @@ export interface BootModuleRow {
   id: string
   /** Revisioned single-resource combo endpoint used after HMR invalidation. */
   url: string
-  /** Content-addressed combo endpoint used before the first HMR invalidation. */
+  /** Revisioned combo endpoint used before the first HMR invalidation. */
   initialUrl: string
   /** Opaque plugin-artifact revision used after HMR invalidation. */
   rev: string

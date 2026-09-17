@@ -538,7 +538,7 @@ describe('tab switching in ConversationRoot', () => {
 
     fireEvent.keyDown(screen.getByRole('row', { name: /工具/ }), { key: 'Enter' })
     expect(screen.getByRole('complementary', { name: '事件详情' })).toBeTruthy()
-    expect(screen.getByText('第 1 轮 · 步骤 1')).toBeTruthy()
+    expect(screen.getByText('第 1 轮 · 第 1 步')).toBeTruthy()
     expect(screen.getByText('已完成')).toBeTruthy()
     expect(screen.getByRole('tab', { name: '结果' })).toBeTruthy()
 

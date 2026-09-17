@@ -20,6 +20,14 @@ The implementation is split into `@deepseek-ai/dsh-experimental-agent-team`, whi
 
 The Lead must wait for required work before its final answer. Process teardown remains the final lifecycle owner and drains continuation Activations; a Team task owner is durable state and is not automatically released by idle, interruption, or process exit.
 
+## Profile delegation
+
+The [Team profile](../../../../packages/experimental/agent-team-profile/README.md) disables `subagent` and `subagent_fork` together with the overlapping global controls. Direct model delegation uses `spawn_teammate` with fresh or fork context, keeping those children in the durable roster. Workflow remains available through the base profile’s fresh `spawn` provider for scripted orchestration; it cannot inherit a teammate’s conversation identity through the model tool. The Subagent services and providers remain shared infrastructure. Ordinary Session forks retain their history without identity correction. Provider-owned child tool visibility remains a [documented limitation](../../../../packages/experimental/tool-agent-team/README.md#known-limitations-and-deferred-work).
+
+## Team identity
+
+The `spawn_teammate` tool prefixes the initial task with a user-role `<system-reminder>` stating `You are teammate "<name>".`. Identity and task enter the same durable inbox message. Shared system policy and all tool schemas stay uniform across members; execution owns role restrictions. Team tools resolve the caller’s Team and accept member names, so the model needs no Team id. Identity follows ordinary history through cold recovery and compaction; the plugin does not inspect reminder retention or add replacement messages. Forks inherit the recorded text without a Lead identity correction. Putting identity in the system prompt changes the prefix before inherited history; keeping it in the initial task preserves that prefix without per-step identity bookkeeping. Existing system-embedded identities may require a one-time prompt reconciliation; retained event generations are unchanged.
+
 ## Provisioning and recovery
 
 Creation first appends and flushes a `team/member` provisioning snapshot in the Lead Session, then starts the reserved continuable child through the selected fresh or fork provider. Failure before initial inbox acceptance appends a failed snapshot. Success flushes the child's accepted inbox item before appending active. Recovery recognizes that initial message while it is still pending or after it enters user-message history. Names are reserved by the first provisioning record and never reused, including after failure. Disposal closes admission, aborts and awaits admitted creation and mailbox-dispatch transactions, then stops every live child recorded by the roster; a failed child remains cleanup-owned until its Activation exits, and cleanup rejection fails disposal.

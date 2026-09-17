@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { resolveDesktopPaths } from '../src/paths.ts'
 import { DesktopProjectManager, packageNameFromSpec, type DesktopProjectHooks } from '../src/project-manager.ts'
+import { readDesktopProfileState } from '../src/profile-packages.ts'
 import { runtimeFixture } from './runtime-fixture.ts'
 
 const roots: string[] = []
@@ -70,6 +71,24 @@ afterEach(async () => {
 })
 
 describe('desktop external plugin profile', () => {
+  it('changes runtime generations without deleting legacy host links', async () => {
+    const { root, manager } = setup()
+    await manager.applyRelease()
+    const links = readDesktopProfileState(manager.paths.profile)?.links
+    expect(links?.length).toBeGreaterThan(0)
+
+    const dsh = join(root, 'next-runtime', 'dsh')
+    runtimeFixture(dsh, '1.1.0')
+    const runtimeManager = new DesktopProjectManager(manager.paths, {
+      ...manager.runtime,
+      dsh,
+      profileResolution: 'runtime',
+    })
+    await expect(runtimeManager.applyRelease()).resolves.toBe(true)
+    expect(readDesktopProfileState(manager.paths.profile)?.links).toEqual(links)
+    await expect(runtimeManager.applyRelease()).resolves.toBe(false)
+  })
+
   it('reuses plugin files without scanning manifests and can disable or reset them', async () => {
     const { manager } = setup()
     await manager.applyRelease()

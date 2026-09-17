@@ -58,7 +58,7 @@ kind: "package-reference"
 
 ### 设计理念
 
-消费方拥有模型侧 schema、`tool:<toolName>` 系统提示词指导与结果包络；脚本解析、执行、上限与取消位于 `ctx.workflowEngine` 之后，因此更坚固的引擎可以无缝替换，而不改变模型看到的内容。使用指导以提示词段的形式随工具插件交付，绝不放入部署 persona。
+消费方拥有模型侧 schema、`tool:<toolName>` 系统提示词指导与结果包络；脚本解析、执行、上限与取消位于 `ctx.workflowEngine` 之后，PTC 引擎与 `run_code` 共享 Node 进程约束。使用指导以提示词段的形式随工具插件交付，绝不放入部署 persona。
 
 ### 运行生命周期
 
@@ -91,7 +91,7 @@ kind: "package-reference"
 
 - [工作流子系统](../../../docs/subsystems/workflow.zh.md)——seam 约定、启动请求与事件载荷。
 - [工作流 seam](../workflow/README.zh.md)——工具背后的运行与结果词汇。
-- [worker-thread 引擎](../workflow-worker-thread/README.zh.md)——执行脚本的引擎。
+- [PTC 工作流引擎](../workflow-ptc/README.zh.md)——执行脚本的引擎。
 - [subagent 工具](../../subagent/tool-subagent/README.zh.md)——一两项委派时的普通委派替代方案。
 - [组地图](../README.zh.md)——工作流能力家族及其包。
 - [动态工作流 Agent Note](../../../.agents/notes/implemented/feature/2026-07-05-dynamic-workflows.zh.md)——seam 设计及其决策。

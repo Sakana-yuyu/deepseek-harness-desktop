@@ -20,7 +20,7 @@ import {
   assertSessionFixtureVersion,
   captureExpectedWorkspaceSnapshot,
   captureWorkspaceSnapshot,
-  normalizeSessionFormatProvenance,
+  normalizeSessionFormatMetadata,
   normalizeSessionLog,
   normalizeSessionSnapshots,
   normalizeStdout,
@@ -124,6 +124,10 @@ interface SdkAssertions {
 }
 
 const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
+  'tool-error-details': {
+    patches: [fileURLToPath(new URL('./tool-error-details/runtime.cordis.yml', import.meta.url))],
+    expectedFinalResponse: 'ERROR_DETAILS_OK',
+  },
   'ptc-turn': {
     patches: [fileURLToPath(new URL('./ptc-turn/runtime.cordis.yml', import.meta.url))],
     expectedFinalResponse: 'CODE_ONE+CODE_TWO',
@@ -364,7 +368,7 @@ function normalizeNotifications(notifications: readonly HarnessNotification[], c
   const normalizedEvents = events.length === 0
     ? []
     : scrubModelRequestBulk(normalizeSessionLog(
-      normalizeSessionFormatProvenance(typedLog),
+      normalizeSessionFormatMetadata(typedLog),
       ctx,
       typedFeedback ? { identityMode: 'preserve' } : {},
     )).trimEnd().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
@@ -539,12 +543,12 @@ async function runScenario(scenario: CorpusScenario): Promise<{
   await mkdir(patchRoot, { recursive: true })
   const assertions = SDK_ASSERTIONS[scenario.name] ?? {}
   const patches = [...authoredPatches(scenario, !recording), ...assertions.patches ?? []]
-    .map((patch, index) => materializeProfilePatch(patch, cwd, patchRoot, index))
+    .map((patch, index) => materializeProfilePatch(patch, cwd, 'sdk', patchRoot, index))
   let childSessionsRoot: string | undefined
   let childEnvironment: Record<string, string> = {}
   if (assertions.dshSdkChild !== undefined) {
     const childHome = join(cwd, '.child-dsh')
-    const childPatch = materializeProfilePatch(assertions.dshSdkChild.config, cwd, patchRoot, patches.length)
+    const childPatch = materializeProfilePatch(assertions.dshSdkChild.config, cwd, 'sdk', patchRoot, patches.length)
     await mkdir(childHome, { recursive: true })
     childSessionsRoot = join(childHome, 'sessions')
     childEnvironment = {
@@ -808,6 +812,21 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
         assertions.dshSdkChild !== undefined,
       )
       const actualContext = contextOf(ordered, cwd)
+      if (scenario.name === 'tool-error-details') {
+        const events = results.flatMap(result => result.events)
+        const errors = events.filter(event => event.type === 'tool/result' || event.type === 'tool/ptc-dispatch')
+          .map(event => event.data['error']).filter(error => error !== undefined)
+        expect(errors).toEqual(Array.from({ length: 2 }, () => ({
+          name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: '  transport raw\r\nreason  ',
+        })))
+        const ptc = events.filter(event => event.type.startsWith('tool/ptc-dispatch'))
+        expect(ptc.map(event => event.type)).toEqual(['tool/ptc-dispatch-start', 'tool/ptc-dispatch'])
+        for (const event of ptc) {
+          expect(event.data).not.toHaveProperty('description')
+          expect(event.data).not.toHaveProperty('parameters')
+          expect(event.data).not.toHaveProperty('schema')
+        }
+      }
       if (assertions.expectedFinalResponse !== undefined) {
         expect(results.at(-1)?.finalResponse, `${scenario.name}: final response`).toBe(assertions.expectedFinalResponse)
         const parent = ordered[0]

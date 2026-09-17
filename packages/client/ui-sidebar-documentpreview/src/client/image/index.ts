@@ -11,6 +11,9 @@ export const IMAGE_BODY_ID = '@deepseek-ai/dsh-client-ui-sidebar-documentpreview
 /** File suffixes rendered by the builtin image body. */
 export const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg'] as const
 
+/** Bitmap suffixes whose bytes are unreadable as text; SVG stays out because its XML source is worth reading. */
+export const BINARY_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico'] as const
+
 /**
  * Describe the builtin image renderer independently from its keyed body slot.
  * @param title - locale-owned implementation name.
@@ -20,6 +23,7 @@ export function imageBodyDefinition(title: () => string): DocumentPreviewDefinit
   return {
     id: IMAGE_BODY_ID,
     extensions: IMAGE_EXTENSIONS,
+    binaryExtensions: BINARY_IMAGE_EXTENSIONS,
     priority: 'builtin',
     title,
     loading: 'bytes-complete',

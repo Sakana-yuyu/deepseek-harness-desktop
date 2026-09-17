@@ -27,8 +27,8 @@ export interface ClientBootOptions {
 /**
  * Compose the client: `ctx.plugin(Loader)`, `loader.internal = modules`, one
  * `loader.create({ name })` per manifest row, `loader.await()`, then
- * {@link assertEntriesActive}. A row whose module cannot be imported rejects
- * `loader.create`, so that import error propagates from here as-is.
+ * {@link assertEntriesActive}. A row whose module cannot be imported is marked
+ * failed; the Loader logs its import error and the audit rejects startup.
  * @param options - context, module system, manifest, optional progress sink.
  * @returns resolves after every entry is active; rejects with the audit report otherwise.
  */

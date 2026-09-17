@@ -80,6 +80,25 @@ function harness() {
 }
 
 describe('SidebarRightController — opening', () => {
+  it('keeps independently opened instances distinct when they return to the same pane', () => {
+    const h = harness()
+    h.tabs.register({ id: 'test/terminal', kind: 'terminal', multiple: true, title: () => 'terminal' })
+    const release = h.publish()
+    try {
+      h.controller.openTab('terminal')
+      h.controller.openTab('terminal')
+      const terminals = Object.values(h.layout().tabs).filter(tab => tab.kind === 'terminal')
+      expect(terminals).toHaveLength(2)
+      expect(terminals[0]!.contentId).not.toBe(terminals[1]!.contentId)
+      const pane = findTabPane(h.layout(), terminals[0]!.id).id
+      h.instance.actions.floatTab(SESSION, terminals[0]!.id)
+      const floating = findTabPane(h.layout(), terminals[0]!.id).id
+      h.instance.actions.unfloatPane(SESSION, floating)
+      expect(getPane(h.layout(), pane).tabs).toContain(terminals[0]!.id)
+      expect(getPane(h.layout(), pane).tabs).toContain(terminals[1]!.id)
+    } finally { release() }
+  })
+
   it('refuses every write while no seat is mounted', () => {
     const { controller } = harness()
     expect(() => { controller.openResource('dsh-resource://file/session/s-test/a.txt') }).toThrow('no session surface is mounted')
@@ -589,4 +608,90 @@ describe('SidebarRightController — binding lifetime', () => {
     stale()
     expect(() => { controller.toggleExpanded() }).not.toThrow()
   })
+})
+
+describe('explicit tab resource cleanup', () => {
+  it.each(['close', 'replace'] as const)('immediately removes the tab after a synchronous cleanup handler during %s', (operation) => {
+    const h = harness()
+    const release = h.adopt(SESSION, h.instance)
+    const unbind = h.publish()
+    h.controller.openResource('dsh-resource://file/session/s-test/terminal')
+    const tabId = h.tabOf('terminal')
+    const original = h.layout().tabs[tabId]
+    const handler = vi.fn(() => { expect(h.layout().tabs[tabId]).toBe(original) })
+    const unregister = h.controller.registerCloseHandler('text', handler)
+    try {
+      const before = h.entries()
+      if (operation === 'close') h.controller.close(tabId)
+      else h.controller.openTab('guide', { replaceTab: tabId, revealIfOpened: false })
+      expect(handler).toHaveBeenCalledExactlyOnceWith(SESSION, original)
+      expect(h.layout().tabs[tabId]).toBeUndefined()
+      expect(h.entries()).toBe(before + 1)
+      h.controller.closeIn(SESSION, tabId)
+      expect(handler).toHaveBeenCalledOnce()
+    } finally {
+      unregister()
+      unbind()
+      release()
+    }
+  })
+
+  it('does not invoke cleanup on collapse or when revealing the same tab', () => {
+    const h = harness()
+    h.adopt(SESSION, h.instance)
+    h.publish()
+    const address = 'dsh-resource://file/session/s-test/terminal'
+    h.controller.openResource(address)
+    h.publish()
+    const tabId = h.tabOf('terminal')
+    const handler = vi.fn()
+    h.controller.registerCloseHandler('text', handler)
+    h.controller.toggleExpanded()
+    h.controller.openResource(address, { replaceTab: tabId })
+    expect(handler).not.toHaveBeenCalled()
+    expect(h.layout().tabs[tabId]).toBeDefined()
+  })
+
+  it.each(['close', 'replace'] as const)('preserves a tab when its synchronous %s handler throws', (operation) => {
+    const h = harness()
+    h.adopt(SESSION, h.instance)
+    h.publish()
+    h.controller.openResource('dsh-resource://file/session/s-test/terminal')
+    const tabId = h.tabOf('terminal')
+    const release = h.controller.registerCloseHandler('text', () => { throw new Error('cannot retain cleanup') })
+    const perform = () => {
+      if (operation === 'close') h.controller.closeIn(SESSION, tabId)
+      else h.controller.openTab('guide', { replaceTab: tabId, revealIfOpened: false })
+    }
+    expect(perform).toThrow('cannot retain cleanup')
+    expect(h.layout().tabs[tabId]).toBeDefined()
+    release()
+    perform()
+    expect(h.layout().tabs[tabId]).toBeUndefined()
+  })
+})
+
+it('releases close handlers without a stale disposer removing a replacement', () => {
+  const h = harness()
+  h.adopt(SESSION, h.instance)
+  h.publish()
+  const first = vi.fn(() => {})
+  const second = vi.fn(() => {})
+  const release = h.controller.registerCloseHandler('text', first)
+  expect(() => h.controller.registerCloseHandler('text', second)).toThrow('already registered')
+  release()
+  const releaseSecond = h.controller.registerCloseHandler('text', second)
+  release()
+  h.controller.openResource('dsh-resource://file/session/s-test/one')
+  h.publish()
+  h.controller.closeIn(SESSION, h.tabOf('one'))
+  expect(first).not.toHaveBeenCalled()
+  expect(second).toHaveBeenCalledOnce()
+  releaseSecond()
+  h.controller.openResource('dsh-resource://file/session/s-test/two')
+  h.publish()
+  const tabId = h.tabOf('two')
+  h.controller.openTab('guide', { replaceTab: tabId, revealIfOpened: false })
+  expect(h.layout().tabs[tabId]).toBeUndefined()
+  expect(second).toHaveBeenCalledOnce()
 })

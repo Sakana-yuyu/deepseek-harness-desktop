@@ -15,9 +15,10 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import { queueReadFaceOf } from './queue-store.ts'
 import type {
-  ComposerKeyboard, DraftAttachmentId, DraftAttachmentSerializationResult, InputTriggerController,
+  DraftAttachmentId, DraftAttachmentSerializationResult, InputTriggerController,
   SessionInputResolver, SessionInput, SubmitOutcome,
 } from '../contract/input.ts'
+import type { ComposerKeyboard } from '../contract/draft-editor.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 import type { PopupDismissFace } from './facade.ts'
 import { SessionInputShell } from './facade.ts'

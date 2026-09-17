@@ -120,6 +120,19 @@ export function linkDesktopHostPackages(profile: string, root: string, runtime: 
   writeFileSync(join(profile, DESKTOP_PROFILE_STATE), `${JSON.stringify(state, undefined, 2)}\n`, { mode: 0o600 })
 }
 
+/**
+ * Record a runtime-resolved profile without changing links left by an earlier release.
+ * @param profile - Active Desktop profile.
+ * @param runtime - Verified release descriptor supplying the runtime generation.
+ */
+export function recordDesktopRuntimeProfile(profile: string, runtime: DesktopRuntimeDescriptor): void {
+  const links = readDesktopProfileState(profile)?.links ?? []
+  const state: DesktopProfileState = { schemaVersion: 1, runtimeId: desktopRuntimeId(runtime), version: runtime.release.version,
+    nodeVersion: runtime.release.nodeVersion, platform: runtime.platform, arch: runtime.arch,
+    lockHash: desktopPluginLockHash(profile), links }
+  writeFileSync(join(profile, DESKTOP_PROFILE_STATE), `${JSON.stringify(state, undefined, 2)}\n`, { mode: 0o600 })
+}
+
 interface PackageManifest {
   readonly name: string
   readonly version: string
@@ -167,16 +180,28 @@ function packageFrom(anchor: string, name: string): string | undefined {
  * @param root - Immutable runtime directory.
  * @param runtime - Verified shared package inventory.
  * @param activePlugins - Explicit enabled plugin roots whose peer compatibility is required.
+ * @param resolutionMode - Whether host packages are linked or supplied by a runtime generation.
  */
 export function validateDesktopPluginGraph(
   profile: string, root: string, runtime: DesktopRuntimeDescriptor, activePlugins: readonly string[],
+  resolutionMode: 'link' | 'runtime' = 'link',
 ): void {
   const profileRoot = realpathSync.native(profile)
   const shared = new Map(runtime.sharedPackages.map((entry) => {
-    return [entry.name, realpathSync.native(runtimePath(root, entry.path))] as const
+    const path = runtimePath(root, entry.path)
+    let canonical: string
+    try {
+      canonical = realpathSync.native(path)
+    } catch (error) {
+      if (!existsSync(path)) throw error
+      canonical = resolve(path)
+    }
+    return [entry.name, { path: canonical, version: entry.version }] as const
   }))
-  for (const [name, path] of shared) {
-    if (packageFrom(profile, name) !== path) throw new Error(`desktop profile: missing or incorrect host link ${name}`)
+  if (resolutionMode === 'link') {
+    for (const [name, entry] of shared) {
+      if (packageFrom(profile, name) !== entry.path) throw new Error(`desktop profile: missing or incorrect host link ${name}`)
+    }
   }
   if (activePlugins.length === 0) return
   const scanned = new Set<string>()
@@ -195,7 +220,7 @@ export function validateDesktopPluginGraph(
       const info = manifest(canonical)
       const host = shared.get(info.name)
       if (host !== undefined) {
-        if (canonical !== host || path !== join(profile, 'node_modules', info.name)) {
+        if (resolutionMode !== 'runtime' && (canonical !== host.path || path !== join(profile, 'node_modules', info.name))) {
           throw new Error(`desktop profile: duplicate or aliased host package ${info.name} at ${path}`)
         }
         continue
@@ -215,19 +240,25 @@ export function validateDesktopPluginGraph(
     for (const [name, range] of Object.entries({ ...deps, ...info.peerDependencies })) {
       const peer = name in info.peerDependencies
       const optional = peer ? info.optionalPeers.has(name) : name in info.optionalDependencies
+      const host = shared.get(name)
+      if (host !== undefined && name in deps) throw new Error(`desktop profile: ${chain} must declare ${name} as a peer dependency`)
+      if (host !== undefined) {
+        if (peer && !satisfies(host.version, range)) {
+          throw new Error(`desktop profile: ${chain} requires ${name}@${range}, found ${host.version}`)
+        }
+        continue
+      }
       const target = packageFrom(path, name)
       if (target === undefined && optional) continue
       if (target === undefined) throw new Error(`desktop profile: ${chain} requires missing ${name}@${range}`)
-      const host = shared.get(name)
-      if (host !== undefined && name in deps) throw new Error(`desktop profile: ${chain} must declare ${name} as a peer dependency`)
-      if (host !== undefined ? target !== host : !inside(profileRoot, target)) {
+      if (!inside(profileRoot, target)) {
         throw new Error(`desktop profile: ${chain} resolves ${name} outside its owned packages`)
       }
       const dependency = manifest(target)
       if (peer && !satisfies(dependency.version, range)) {
         throw new Error(`desktop profile: ${chain} requires ${name}@${range}, found ${dependency.version}`)
       }
-      if (host === undefined) visit(target, `${chain} -> ${name}`)
+      visit(target, `${chain} -> ${name}`)
     }
   }
   for (const name of activePlugins) {

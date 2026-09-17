@@ -259,7 +259,7 @@ export class OpenTelemetrySessionBackend extends SessionTelemetryBackend {
       if (committed === undefined) return
       const session = Session.fromRestore(
         snapshot.meta.id, snapshot.events, snapshot.meta, snapshot.inheritedEventCount,
-        'detached',
+        'detached', ctx.sessions.messageProjections,
       )
       // fromRestore appends a lifecycle marker that this submission did not commit.
       if (isFeedback(session, committed)) coordinator.captureSession(session, committed.seq)

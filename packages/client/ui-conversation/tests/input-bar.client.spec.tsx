@@ -58,9 +58,9 @@ interface BenchOptions {
   /** The `goal` projection value used only to prove attachment intake remains ordinary. */
   goal?: { phase: 'active'; objective: string }
   modelEntry?: React.ReactNode
+  permissionEntry?: React.ReactNode
   /** Hot text-ref lexicon (injects a minimal slash stub exposing only lexicon()). */
   lexicon?: ReadonlyMap<'/' | '@', readonly string[]>
-  permissions?: { options: { value: string; name: string; description?: string }[]; currentValue: string }
   /** The `imageLimits` projection value (absent = no attachment service). */
   imageLimits?: {
     maxImageBytes: number
@@ -86,7 +86,6 @@ interface BenchOptions {
   variant?: 'hero' | 'composer'
   placeholder?: string
   t?: InputBarProps['t']
-  command?: (line: string) => Promise<boolean>
   accessory?: React.ReactNode
   overlay?: React.ReactNode
   leftItems?: React.ReactNode
@@ -160,6 +159,7 @@ function bench(over?: BenchOptions) {
     if (key === 'conversation.input.right') return over?.rightItems ?? null
     if (key === 'conversation.composer.dock') return over?.footer ?? null
     if (key === 'conversation.input.plan') return over?.planEntry ?? null
+    if (key === 'conversation.input.permission') return over?.permissionEntry ?? null
     if (key === 'conversation.input.model') return over?.modelEntry ?? null
     return null
   }) as never
@@ -179,11 +179,10 @@ function bench(over?: BenchOptions) {
       items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     })),
     useProjection: ((key: string, selector?: (v: unknown) => unknown) =>
-      (selector ?? (v => v))(key === 'permissions'
-        ? over?.permissions
-        : key === 'plan' ? over?.plan
-          : key === 'goal' ? over?.goal
-            : key === 'imageLimits' ? over?.imageLimits : undefined)),
+      (selector ?? (v => v))(key === 'plan'
+        ? over?.plan
+        : key === 'goal' ? over?.goal
+          : key === 'imageLimits' ? over?.imageLimits : undefined)),
     useInput: bindSnapshotSelector(shell.state),
     inputActions: shell.actions,
     keyboard: shell,
@@ -201,7 +200,6 @@ function bench(over?: BenchOptions) {
     useLexicon: bindSnapshotSelector(shell.lexicon),
     useMenuLauncher: bindSnapshotSelector(menuLauncher),
     stop,
-    command: over?.command ?? (() => Promise.resolve(true)),
     // Mirrors the real lookup chain (conversation namespace, then common).
     t: over?.t ?? makeTranslate(zh, commonZh),
     renderSlot,
@@ -1572,16 +1570,16 @@ describe('strips and variants', () => {
 })
 
 describe('command launcher chrome and control seats', () => {
-  it('renders the command launcher; the Access chip is absent without the permissions projection; the control seats render EMPTY without entries', () => {
+  it('renders the command launcher and dispatches every empty control seat', () => {
     const { view, slotCalls } = bench()
     expect(view.getByLabelText('添加文件或调用指令')).toBeTruthy()
-    // Capability absent (no projection value): the chip renders nothing.
+    // Capability absent (no permission slot entry): the chip renders nothing.
     expect(view.queryByLabelText(/^访问模式/)).toBeNull()
     // Every seat dispatched, nothing rendered (render passes may repeat; the
     // seat set is the contract).
     expect([...new Set(slotCalls.map(c => c.key))]).toEqual([
       'conversation.input.overlay', 'conversation.input.attachments',
-      'conversation.input.plan', 'conversation.input.left',
+      'conversation.input.permission', 'conversation.input.plan', 'conversation.input.left',
       'conversation.input.right', 'conversation.input.model',
       'conversation.composer.dock',
     ])
@@ -1601,155 +1599,20 @@ describe('command launcher chrome and control seats', () => {
     expect(launcher.getAttribute('aria-expanded')).toBe('true')
   })
 
-  it('the Access chip renders the projection value and submits a non-Full-access pick directly', async () => {
-    const command = vi.fn(() => Promise.resolve(true))
-    const permissions = {
-      options: [
-        { value: 'read-only', name: 'read-only' },
-        { value: 'workspace-write', name: 'workspace-write' },
-        { value: 'danger-full-access', name: 'danger-full-access' },
-      ],
-      currentValue: 'read-only',
-    }
-    const { view } = bench({ permissions, command })
-    const trigger = view.getByLabelText(/^访问模式/) as HTMLButtonElement
-    // Product-label display is presentation only; the menu ids stay machine names.
-    expect(trigger.textContent).toBe('仅可查看')
-    expect([...trigger.querySelectorAll('svg')]
-      .every(icon => icon.closest('[aria-hidden="true"]') !== null)).toBe(true)
-    fireEvent.click(trigger)
-    const items = view.getAllByRole('menuitem')
-    expect(items.map(o => o.textContent)).toEqual(['仅可查看', '工作区内修改', '完全权限'])
-    fireEvent.click(items[1]!)
-    // Optimistic pick + disable until admission resolves (command stub resolves true).
-    const busy = view.getByLabelText(/^访问模式/) as HTMLButtonElement
-    expect(busy.textContent).toBe('工作区内修改')
-    expect(busy.disabled).toBe(true)
-    expect(command).toHaveBeenCalledWith('/permission workspace-write')
-    await act(async () => {})
-    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(false)
-  })
-
-  it('the Access chip preserves host labels for built-in preset values', () => {
-    const permissions = {
-      options: [
-        { value: 'read-only', name: 'Review Only' },
-        { value: 'workspace-write', name: 'Project Files' },
-        { value: 'danger-full-access', name: 'Operator Mode' },
-        { value: 'custom-mode', name: 'custom-mode' },
-        { value: '__proto__', name: '__proto__' },
-      ],
-      currentValue: 'workspace-write',
-    }
-    const { view } = bench({ permissions })
-    const trigger = view.getByLabelText(/^访问模式/) as HTMLButtonElement
-    expect(trigger.textContent).toBe('Project Files')
-    fireEvent.click(trigger)
-    expect(view.getAllByRole('menuitem').map(item => item.textContent))
-      .toEqual(['Review Only', 'Project Files', 'Operator Mode', 'Custom Mode', '__proto__'])
-  })
-
-  it('requires explicit risk acknowledgement before submitting full access', async () => {
-    const command = vi.fn(() => Promise.resolve(true))
-    const permissions = {
-      options: [
-        { value: 'workspace-write', name: 'workspace-write' },
-        { value: 'danger-full-access', name: 'danger-full-access' },
-      ],
-      currentValue: 'workspace-write',
-    }
-    const { view } = bench({ permissions, command })
-    fireEvent.click(view.getByLabelText(/^访问模式/))
-    fireEvent.click(view.getByRole('menuitem', { name: '完全权限' }))
-
-    expect(command).not.toHaveBeenCalled()
-    expect(view.getByRole('dialog', { name: '确认启用完全权限？' })).toBeTruthy()
-    const enable = view.getByRole('button', { name: '启用完全权限' }) as HTMLButtonElement
-    expect(enable.disabled).toBe(true)
-
-    fireEvent.click(view.getByRole('checkbox', { name: '我已了解风险，并愿意继续' }))
-    expect(enable.disabled).toBe(false)
-    fireEvent.click(enable)
-
-    expect(command).toHaveBeenCalledOnce()
-    expect(command).toHaveBeenCalledWith('/permission danger-full-access')
-    expect(view.queryByRole('dialog')).toBeNull()
-    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).textContent).toBe('完全权限')
-    await act(async () => {})
-  })
-
-  it('cancels a full access selection without changing permission and resets acknowledgement', () => {
-    const command = vi.fn(() => Promise.resolve(true))
-    const permissions = {
-      options: [
-        { value: 'workspace-write', name: 'workspace-write' },
-        { value: 'danger-full-access', name: 'danger-full-access' },
-      ],
-      currentValue: 'workspace-write',
-    }
-    const { view } = bench({ permissions, command })
-    const openConfirmation = () => {
-      fireEvent.click(view.getByLabelText(/^访问模式/))
-      fireEvent.click(view.getByRole('menuitem', { name: '完全权限' }))
-    }
-
-    openConfirmation()
-    fireEvent.click(view.getByRole('checkbox'))
-    fireEvent.click(view.getByRole('button', { name: '取消' }))
-    expect(command).not.toHaveBeenCalled()
-    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).textContent).toBe('工作区内修改')
-
-    openConfirmation()
-    expect((view.getByRole('checkbox') as HTMLInputElement).checked).toBe(false)
-    expect((view.getByRole('button', { name: '启用完全权限' }) as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('revokes an open full access confirmation when the task locks', () => {
-    const command = vi.fn(() => Promise.resolve(true))
-    const permissions = {
-      options: [
-        { value: 'workspace-write', name: 'workspace-write' },
-        { value: 'danger-full-access', name: 'danger-full-access' },
-      ],
-      currentValue: 'workspace-write',
-    }
-    const { view, session } = bench({ permissions, command })
-    fireEvent.click(view.getByLabelText(/^访问模式/))
-    fireEvent.click(view.getByRole('menuitem', { name: '完全权限' }))
-    fireEvent.click(view.getByRole('checkbox'))
-    act(() => { session.set(snapshotOf({ removed: true })) })
-    expect(view.queryByRole('dialog')).toBeNull()
-    expect(command).not.toHaveBeenCalled()
-  })
-
-  it('resets an open full access confirmation when switching tasks', () => {
-    const command = vi.fn(() => Promise.resolve(true))
-    const permissions = {
-      options: [
-        { value: 'workspace-write', name: 'workspace-write' },
-        { value: 'danger-full-access', name: 'danger-full-access' },
-      ],
-      currentValue: 'workspace-write',
-    }
-    const { view, props } = bench({ permissions, command })
-    fireEvent.click(view.getByLabelText(/^访问模式/))
-    fireEvent.click(view.getByRole('menuitem', { name: '完全权限' }))
-    fireEvent.click(view.getByRole('checkbox'))
-    view.rerender(<InputBar {...props} sessionId={'s2' as SessionId} />)
-    expect(view.queryByRole('dialog')).toBeNull()
-    expect(command).not.toHaveBeenCalled()
-  })
-
   it('a registered entry fills its seat and receives the locked owner prop', () => {
     const { view, slotCalls } = bench({
       disabled: true,
       planEntry: <i data-testid="plan-entry" />,
+      permissionEntry: <i data-testid="permission-entry" />,
       modelEntry: <i data-testid="model-entry" />,
     })
     expect(view.getByTestId('plan-entry')).toBeTruthy()
+    expect(view.getByTestId('permission-entry')).toBeTruthy()
     expect(view.getByTestId('model-entry')).toBeTruthy()
     // The bar hands its chrome disable state to the filling entry.
-    const controlKeys = new Set(['conversation.input.plan', 'conversation.input.model'])
+    const controlKeys = new Set([
+      'conversation.input.permission', 'conversation.input.plan', 'conversation.input.model',
+    ])
     const controls = slotCalls.filter(call => controlKeys.has(call.key))
     expect(controls.every(c => (c.owner as { locked: boolean }).locked)).toBe(true)
     expect(attachmentOwner(slotCalls).canAcceptDrop).toBe(false)
@@ -1760,13 +1623,11 @@ describe('command launcher chrome and control seats', () => {
     expect(attachmentOwner(live.slotCalls).canAcceptDrop).toBe(true)
   })
 
-  it('disabled locks the Access chip and command launcher (running does not)', () => {
-    const permissions = { options: [{ value: 'workspace-write', name: 'workspace-write' }], currentValue: 'workspace-write' }
-    const { view } = bench({ disabled: true, permissions })
+  it('disabled locks the command launcher while running does not', () => {
+    const { view } = bench({ disabled: true })
     expect((view.getByLabelText('添加文件或调用指令') as HTMLButtonElement).disabled).toBe(true)
-    expect((view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(true)
     cleanup()
-    const live = bench({ running: true, permissions })
-    expect((live.view.getByLabelText(/^访问模式/) as HTMLButtonElement).disabled).toBe(false)
+    const live = bench({ running: true })
+    expect((live.view.getByLabelText('添加文件或调用指令') as HTMLButtonElement).disabled).toBe(false)
   })
 })

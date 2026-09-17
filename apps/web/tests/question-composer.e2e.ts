@@ -345,7 +345,7 @@ describe('web e2e: resident question composer round trip', () => {
     expect(await capMetrics(field)).toEqual({ textLines: CAP_LINES, scrolls: true })
 
     // Settle the wait so teardown is not racing a pending question.
-    await composer.getByRole('button', { name: 'Skip this question' }).click()
+    await composer.getByRole('button', { name: 'Skip' }).click()
     expect(await asked).toEqual({ answers: [{ id: 'free', selected: [] }] })
     await expect.poll(() => page.locator('[data-question-key]').count(), { timeout: 10_000 }).toBe(0)
   }, 60_000)

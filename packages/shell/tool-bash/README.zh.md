@@ -53,9 +53,10 @@ kind: "package-reference"
 
 工具执行 `bash -c <command>` 并返回合并后的输出。命令每次调用都运行在全新 shell 中，因此状态从不保留——请传 `workdir` 而不是 `cd`。非零退出以 `[exit code: N]` 报告给 agent 解读，而不是作为工具错误抛出。主动语态的 `description`（5–10 个词）在 UI 中标注该调用；`timeoutMs` 覆盖执行器的默认值与上限。超出执行器流上限的输出会被截断为尾部，完整输出保存到 spill 文件并报告其路径。
 
+<a id="running-long-commands-in-the-background"></a>
 ### 后台运行长时间命令
 
-传入 `run_in_background: true` 会立即返回 job id，不应用超时；命令继续运行，agent 同时处理其他事情。agent 用 `job_output` 读取输出（除非 `wait: true`，否则非阻塞）、用 `job_list` 列出任务、用 `job_kill` 停止任务；完成的任务会在会话内通知拥有它的 agent。后台支持需要挂载通用任务运行时（`dsh-jobs-local`）及其控制工具（`dsh-tool-jobs`）。
+传入 `run_in_background: true` 会准入任务并立即返回 job id；限制准备可能仍在进行，且不设后台执行超时。进程可用前输出为空。任务取消会中止准备并停止随后返回的进程；启动失败使已准入任务以失败状态结算。agent 用 `job_output` 读取输出（除非 `wait: true`，否则非阻塞）、用 `job_list` 列出任务、用 `job_kill` 停止任务；完成的任务会在会话内通知拥有它的 agent。后台支持需要挂载通用任务运行时（`dsh-jobs-local`）及其控制工具（`dsh-tool-jobs`）。
 
 ### 沙箱执行与升权
 
@@ -87,7 +88,7 @@ kind: "package-reference"
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：工具注册、提示词区段、参数校验、升权、请求组装 |
-| [`src/background.ts`](src/background.ts) | 把已结算的后台进程映射为通用任务结果词汇 |
+| [`src/background.ts`](src/background.ts) | 管理异步 shell 准备，并将进程结算映射为任务结果 |
 | [`src/render.ts`](src/render.ts) | 模型侧结果文本：流、标记、截断通知 |
 | — | 不发布运行时不变式伴生入口；环境注册表在每次变更和读取时校验所有权及收集值，且不发布可供伴生入口交叉核对的独立快照；执行关系由能力 seam 负责。 |
 

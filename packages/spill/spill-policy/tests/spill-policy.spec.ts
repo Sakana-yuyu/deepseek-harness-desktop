@@ -8,12 +8,12 @@
  * result without an `isError`.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
@@ -21,7 +21,29 @@ import type { PostToolDecision, ToolExecution, ToolExecutionToken } from '@deeps
 import { SpillLocator, SpillStore } from '@deepseek-ai/dsh-spill'
 import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
 import * as SpillPolicy from '@deepseek-ai/dsh-spill-policy'
-import { WorkerThreadCodeRuntime } from '@deepseek-ai/dsh-code-runtime-worker-thread'
+import NodeRuntime, { type Config as NodeRuntimeConfig } from '@deepseek-ai/dsh-ptc-runtime-node'
+import FileSystem from '@deepseek-ai/dsh-fs-local'
+import Subprocess from '@deepseek-ai/dsh-subprocess-local'
+import Sandbox from '@deepseek-ai/dsh-sandbox-local'
+import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
+import SessionProjections from '@deepseek-ai/dsh-session-projection'
+
+async function mountRuntime(ctx: Context, config: NodeRuntimeConfig = {}): Promise<void> {
+  onTestFinished(async () => { await ctx.fiber.dispose() })
+  if (!ctx.get('sessions')) await ctx.plugin(SessionStore)
+  if (!ctx.get('fs')) await ctx.plugin(FileSystem)
+  if (!ctx.get('subprocess')) await ctx.plugin(Subprocess)
+  if (!ctx.get('sandbox')) await ctx.plugin(Sandbox, {})
+  if (!ctx.get('sessionProjections')) await ctx.plugin(SessionProjections)
+  if (!ctx.get('sandboxPolicy')) await ctx.plugin(SandboxPolicy, { mode: 'danger-full-access' })
+  await ctx.plugin(NodeRuntime, config)
+}
+
+function observedAgent(ctx: Context, id: string, observe: (type: string, data: unknown) => void) {
+  const session = ctx.sessions.create(SessionId(id), { meta: { cwd: process.cwd() } })
+  ctx.on('session/event', (owner, event) => { if (owner === session) observe(event.type, event.data) })
+  return { session }
+}
 
 const testToolSignal = new AbortController().signal
 
@@ -193,14 +215,9 @@ describe('outer PTC mode failure capture', () => {
     await ctx.plugin(ToolRuntime, { mode: 'ptc' })
     await ctx.plugin(StubStore)
     await ctx.plugin(SpillPolicy, { maxInlineBytes: 200 })
-    await ctx.plugin(WorkerThreadCodeRuntime, { maxOutputBytes: 500 })
+    await mountRuntime(ctx, { maxOutputBytes: 500 })
     const events: unknown[] = []
-    const agent = {
-      session: {
-        header: { id: SessionId('code-spill'), cwd: '/workspace' },
-        append: (_type: string, data: unknown) => { events.push(data) },
-      },
-    }
+    const agent = observedAgent(ctx, 'code-spill', (_type: string, data: unknown) => { events.push(data) })
 
     const result = await ctx.tools.execute({
       signal: testToolSignal,
@@ -235,21 +252,16 @@ describe('read skip', () => {
 })
 
 describe('the durable dispatch-log arm', () => {
-  /** Boot code mode + the policy + the worker runtime; run one program via the real bridge. */
+  /** Boot code mode + the policy + the Node runtime; run one program via the real bridge. */
   async function runCodeWith(program: string, maxInlineBytes: number, extraTools: ToolDefinition[] = []) {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime, { mode: 'ptc' })
     await ctx.plugin(StubStore)
     await ctx.plugin(SpillPolicy, { maxInlineBytes })
-    await ctx.plugin(WorkerThreadCodeRuntime, {})
+    await mountRuntime(ctx, {})
     const events: { type: string; data: unknown }[] = []
-    const agent = {
-      session: {
-        header: { id: SessionId('dispatch-spill'), cwd: '/workspace' },
-        append: (type: string, data: unknown) => { events.push({ type, data }) },
-      },
-    }
+    const agent = observedAgent(ctx, 'dispatch-spill', (type: string, data: unknown) => { events.push({ type, data }) })
     ctx.tools.register(textTool('huge_read', 'H'.repeat(2_000)))
     ctx.tools.register(textTool('small_read', 'tiny'))
     for (const tool of extraTools) ctx.tools.register(tool)
@@ -316,7 +328,7 @@ describe('the durable dispatch-log arm', () => {
     await ctx.plugin(ToolRuntime, { mode: 'ptc' })
     await ctx.plugin(StubStore)
     await ctx.plugin(SpillPolicy, { maxInlineBytes: 100 })
-    await ctx.plugin(WorkerThreadCodeRuntime, {})
+    await mountRuntime(ctx, {})
     // A spill backend that hangs until released.
     let releaseSave!: () => void
     const gate = new Promise<void>((resolve) => { releaseSave = resolve })
@@ -327,12 +339,7 @@ describe('the durable dispatch-log arm', () => {
       return realSave(input)
     }
     const events: { type: string; data: unknown }[] = []
-    const agent = {
-      session: {
-        header: { id: SessionId('dispatch-slow-spill'), cwd: '/workspace' },
-        append: (type: string, data: unknown) => { events.push({ type, data }) },
-      },
-    }
+    const agent = observedAgent(ctx, 'dispatch-slow-spill', (type: string, data: unknown) => { events.push({ type, data }) })
     ctx.tools.register(textTool('huge_read', 'H'.repeat(2_000)))
     ctx.tools.register(textTool('small_read', 'tiny'))
     let smallAfterHuge = false
@@ -380,17 +387,12 @@ describe('the durable dispatch-log arm', () => {
     await ctx.plugin(ToolRuntime, { mode: 'ptc', maxParallelSubCalls: 1 })
     await ctx.plugin(StubStore)
     await ctx.plugin(SpillPolicy, { maxInlineBytes: 100 })
-    await ctx.plugin(WorkerThreadCodeRuntime, {})
+    await mountRuntime(ctx, {})
     const store = ctx.spillStore as StubStore
     const releases: (() => void)[] = []
     store.gate = () => new Promise<void>((resolve) => { releases.push(resolve) })
     const events: { type: string; data: unknown }[] = []
-    const agent = {
-      session: {
-        header: { id: SessionId('dispatch-spill-bound'), cwd: '/workspace' },
-        append: (type: string, data: unknown) => { events.push({ type, data }) },
-      },
-    }
+    const agent = observedAgent(ctx, 'dispatch-spill-bound', (type: string, data: unknown) => { events.push({ type, data }) })
     ctx.tools.register(textTool('huge_read', 'H'.repeat(2_000)))
     const started = (n: number): boolean => events.some(event => event.type === 'tool/ptc-dispatch-start'
       && (event.data as { subCallId: string }).subCallId.endsWith(`:ptc:${n}`))
@@ -433,16 +435,11 @@ describe('the durable dispatch-log arm', () => {
     await ctx.plugin(ToolRuntime, { mode: 'ptc' })
     await ctx.plugin(StubStore)
     await ctx.plugin(SpillPolicy, { maxInlineBytes: 100 })
-    await ctx.plugin(WorkerThreadCodeRuntime, {})
+    await mountRuntime(ctx, {})
     ;(ctx.spillStore as StubStore).fail = true
     const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
     const events: { type: string; data: unknown }[] = []
-    const agent = {
-      session: {
-        header: { id: SessionId('dispatch-spill-fail'), cwd: '/workspace' },
-        append: (type: string, data: unknown) => { events.push({ type, data }) },
-      },
-    }
+    const agent = observedAgent(ctx, 'dispatch-spill-fail', (type: string, data: unknown) => { events.push({ type, data }) })
     ctx.tools.register(textTool('huge_read', 'H'.repeat(2_000)))
     const result = await ctx.tools.execute({
       signal: testToolSignal,

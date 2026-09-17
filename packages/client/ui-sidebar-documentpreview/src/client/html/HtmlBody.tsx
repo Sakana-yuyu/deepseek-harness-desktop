@@ -1,6 +1,7 @@
 /** Complete HTML rendered in a script-enabled opaque iframe, without parent application access. */
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import clsx from 'clsx'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DocumentPreviewProps } from '../document/contract.ts'
 import { LoadingIndicator } from '../LoadingIndicator.tsx'
@@ -49,7 +50,7 @@ function HtmlFrame({ data, readRelative, t }: FrameInput & { t: HtmlBodyProps['t
   }, [data, readRelative])
 
   if (frame?.data !== data || frame.readRelative !== readRelative) {
-    return <LoadingIndicator className={css.status} label={t('loading')} />
+    return <LoadingIndicator className={clsx(css.status, css.opening)} label={t('loading')} />
   }
   if (frame.url === undefined) return <p className={css.status} role="alert">{t('failed')}</p>
   return <iframe key={frame.url} className={css.frame} src={frame.url} sandbox="allow-scripts" title={t('frame')} data-html-preview />

@@ -10,13 +10,41 @@
 
 import type { Message } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, SessionSeq } from './types.ts'
-import { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
+import { KNOWN_SESSION_EVENT_TYPES, MESSAGE_PROJECTION_EVENT_TYPES } from './known-event-types.ts'
 import type {
   SessionEvent,
+  SessionEventType,
   SessionSeqCursor,
   SurfaceEvent,
   SurfaceOp,
 } from './types.ts'
+
+/** Readonly history immediately before a message-projection event. */
+export interface SessionMessageProjectionContext {
+  /** Current message-producing event sequences in model-visible order. */
+  nodes: readonly SessionSeq[]
+  /** Contiguous event window; entries at or beyond the candidate seq are not committed inputs. */
+  events: readonly SessionEvent[]
+  /** Absolute sequence of the window's first event. */
+  baseSeq: SessionLogOffset
+  /** Previously projected messages keyed by their original event sequences. */
+  messages: ReadonlyMap<SessionSeq, Message>
+}
+
+/** Pure interpretation of one plugin-owned event that changes existing message content. */
+export interface SessionMessageProjection<T extends SessionEventType = SessionEventType> {
+  /** Event interpreted by this definition; declare it with `@messageProjection` in SessionEventMap. */
+  type: T
+  /**
+   * Validate the complete durable decision before returning any updates. Preserve
+   * message identities and publish immutable copies without mutating the input.
+   * @param event - candidate event, not yet applied to the supplied history.
+   * @param context - history preceding this decision.
+   * @returns changed current messages keyed by their original sequences.
+   * @throws when the durable decision cannot be applied to this history.
+   */
+  project(event: SessionEvent<T>, context: SessionMessageProjectionContext): ReadonlyMap<SessionSeq, Message>
+}
 
 /** Runtime counterpart of the message-producing event union. */
 const SURFACE_EVENT_TYPES = new Set<string>([
@@ -79,17 +107,21 @@ export function isReplacementSurfaceEvent(
 /**
  * Project a single event into the LLM message it derives to, or null when it
  * produces none — a non-surface event (attempt, boundary, log-only record) or an
- * empty-content assistant/message (which exists only to host usage). This is
- * THE per-node projection rule: `Session.deriveMessages` folds it over the
- * live surface, external reconstructors and pure projections fold the same
- * function over a log prefix's surface to rebuild the exact messages any
- * request was built from. The returned message is the already frozen message
- * nested in the event wrapper and shared by delivery, durable history, and
- * model requests.
+ * empty-content assistant/message (which exists only to host usage). A caller
+ * reconstructing model input supplies the same prefix's `projectedMessages`
+ * from {@link foldSurface}; without that map this function reads original
+ * event content. Session instance methods apply the live projection. Messages
+ * are immutable and unchanged content retains its durable identity.
  * @param event - the event to project.
+ * @param projectedMessages - message projections from the same log prefix's surface fold.
  * @returns the derived message, or null when the event produces none.
  */
-export function deriveEventMessage(event: SessionEvent): Message | null {
+export function deriveEventMessage(
+  event: SessionEvent,
+  projectedMessages?: ReadonlyMap<SessionSeq, Message>,
+): Message | null {
+  const projected = projectedMessages?.get(event.seq)
+  if (projected !== undefined) return projected
   // Intentionally non-exhaustive: only message-producing events derive
   // history; turn/step boundaries, failed attempts, and errors are trace/replay
   // data.
@@ -184,6 +216,8 @@ export interface SurfaceFoldResult {
   nodes: SessionSeq[]
   /** Replacement operations in event order. */
   replacements: SurfaceFoldReplacement[]
+  /** Immutable projected messages, keyed by their original event sequences. */
+  projectedMessages: ReadonlyMap<SessionSeq, Message>
 }
 
 /** Readonly live projection of the message-producing session events. */
@@ -192,12 +226,17 @@ export interface SessionSurface {
   readonly nodes: readonly SessionSeq[]
   /** Monotonic count of committed positional replacements. */
   readonly replaceGeneration: number
+  /** Monotonic count of committed replacements and plugin-owned message changes. */
+  readonly contentGeneration: number
 }
 
 /** Mutable state shared by complete and incremental folds. */
 interface SurfaceFoldState {
   nodes: SessionSeq[]
   replaceGeneration: number
+  contentGeneration: number
+  projectedMessages: Map<SessionSeq, Message>
+  projections: Set<SessionMessageProjection>
 }
 
 /** A validated replacement transition that has not mutated fold state yet. */
@@ -211,10 +250,11 @@ interface SurfaceReplacePlan extends SurfaceFoldReplacement {
 type SurfacePlan =
   | { kind: 'append'; seq: SessionSeq }
   | SurfaceReplacePlan
+  | { kind: 'project'; projection: SessionMessageProjection; messages: ReadonlyMap<SessionSeq, Message> }
 
 /** Create an empty surface fold state. */
 function createFoldState(): SurfaceFoldState {
-  return { nodes: [], replaceGeneration: 0 }
+  return { nodes: [], replaceGeneration: 0, contentGeneration: 0, projectedMessages: new Map(), projections: new Set() }
 }
 
 /** Whether a runtime value is a non-negative safe event sequence. */
@@ -266,7 +306,7 @@ function surfaceOpOf(event: SessionEvent): SurfaceOp | undefined {
 }
 
 /** Validate cited source-event seqs against prior log entries and the replacement range. */
-function assertProvenance(
+function assertSourceEventReferences(
   event: SessionEvent,
   shadowedSeqs: readonly SessionSeq[],
 ): void {
@@ -316,7 +356,7 @@ export function validateSurfaceMetadata(event: SessionEvent): SurfaceOp | undefi
     && (op.startSeq >= event.seq || op.endSeq >= event.seq)) {
     throw new Error(`surface replace at seq ${event.seq}: startSeq and endSeq must reference earlier events`)
   }
-  if (op !== undefined) assertProvenance(event, [])
+  if (op !== undefined) assertSourceEventReferences(event, [])
   return op
 }
 
@@ -424,17 +464,27 @@ function planSurfaceEvent(
   expectedSeq: SessionSeq,
   events: readonly SessionEvent[],
   baseSeq: SessionLogOffset,
+  projections: readonly SessionMessageProjection[],
 ): SurfacePlan | undefined {
   if (event.seq !== expectedSeq) {
     throw new Error(`session event seq ${event.seq} is not contiguous; expected ${expectedSeq}`)
   }
   const surfaceOp = validateSurfaceMetadata(event)
+  const projection = projections.find(item => item.type === event.type)
+  if (projection !== undefined) {
+    return { kind: 'project', projection, messages: projection.project(event, {
+      nodes: state.nodes, events, baseSeq, messages: state.projectedMessages,
+    }) }
+  }
+  if (MESSAGE_PROJECTION_EVENT_TYPES.has(event.type)) {
+    throw new Error(`session event "${event.type}" requires a message projection; load its owning plugin or supply its projection definition`)
+  }
   if (surfaceOp === undefined) return
   if (surfaceOp === 'append') {
     return { kind: 'append', seq: event.seq }
   }
   const range = replacementRange(state, surfaceOp)
-  assertProvenance(event, range.shadowedSeqs)
+  assertSourceEventReferences(event, range.shadowedSeqs)
   assertToolResultRewrite(event, range.shadowedSeqs, events, baseSeq)
   assertSystemHeadRewrite(event, state, range.startIdx, range.shadowedSeqs, events, baseSeq)
   return {
@@ -453,8 +503,9 @@ function applySurfaceEvent(
   expectedSeq: SessionSeq,
   events: readonly SessionEvent[],
   baseSeq: SessionLogOffset,
+  projections: readonly SessionMessageProjection[],
 ): SurfaceFoldReplacement | undefined {
-  const plan = planSurfaceEvent(state, event, expectedSeq, events, baseSeq)
+  const plan = planSurfaceEvent(state, event, expectedSeq, events, baseSeq, projections)
   return applySurfacePlan(state, plan)
 }
 
@@ -468,6 +519,11 @@ function applySurfacePlan(
   } else if (plan?.kind === 'replace') {
     state.nodes.splice(plan.startIdx, plan.endIdx - plan.startIdx + 1, plan.seq)
     state.replaceGeneration += 1
+    state.contentGeneration += 1
+  } else if (plan?.kind === 'project') {
+    for (const [seq, message] of plan.messages) state.projectedMessages.set(seq, message)
+    state.projections.add(plan.projection)
+    state.contentGeneration += 1
   }
   if (plan?.kind !== 'replace') return
   return {
@@ -481,10 +537,11 @@ function applySurfacePlan(
 /**
  * Replay a complete session log through the canonical surface fold.
  * @param events - session events in contiguous seq order.
+ * @param projections - pure interpreters for plugin-owned message changes; required definitions must be supplied.
  * @returns detached current sequences and replacement history.
- * @throws when an event violates surface metadata, source-event references, range, or tool-result rewrite rules.
+ * @throws when an interpreter is missing or an event violates its projection, surface metadata, source attribution, or replacement rules.
  */
-export function foldSurface(events: readonly SessionEvent[]): SurfaceFoldResult {
+export function foldSurface(events: readonly SessionEvent[], projections: readonly SessionMessageProjection[] = []): SurfaceFoldResult {
   const state = createFoldState()
   const replacements: SurfaceFoldReplacement[] = []
   for (const [index, event] of events.entries()) {
@@ -494,10 +551,11 @@ export function foldSurface(events: readonly SessionEvent[]): SurfaceFoldResult 
       SessionSeq(index),
       events,
       SessionLogOffset(0),
+      projections,
     )
     if (replacement !== undefined) replacements.push(replacement)
   }
-  return { nodes: [...state.nodes], replacements }
+  return { nodes: [...state.nodes], replacements, projectedMessages: new Map(state.projectedMessages) }
 }
 
 /** Incremental ordered surface view and append-boundary validator. */
@@ -512,10 +570,12 @@ export class SurfaceManager implements SessionSurface {
   /**
    * @param log - Contiguous complete log or loaded event window.
    * @param baseSeq - Absolute sequence of the window's first event.
+   * @param projections - live borrowed definitions; removing a used definition invalidates further reads.
    */
   constructor(
     private log: readonly SessionEvent[],
     private readonly baseSeq: SessionLogOffset = SessionLogOffset(0),
+    private readonly projections: readonly SessionMessageProjection[] = [],
   ) {
     this._lastProcessedSeq = baseSeq === 0 ? -1 : SessionSeq(baseSeq - 1)
   }
@@ -525,23 +585,44 @@ export class SurfaceManager implements SessionSurface {
    * @param event - candidate event that has not entered the log yet.
    */
   validateNext(event: SessionEvent): void {
+    this._assertProjections()
     if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta()
     const expectedSeq = SessionSeq(this.baseSeq + this.log.length)
     this._pendingPlan = {
       event,
       expectedSeq,
-      plan: planSurfaceEvent(this._state, event, expectedSeq, this.log, this.baseSeq),
+      plan: planSurfaceEvent(this._state, event, expectedSeq, this.log, this.baseSeq, this.projections),
     }
   }
 
   /** Monotonic count of folded positional replacements. */
   get replaceGeneration(): number {
+    this._assertProjections()
     if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta()
     return this._state.replaceGeneration
   }
 
+  /** Monotonic count of committed changes to existing model-visible content. */
+  get contentGeneration(): number {
+    this._assertProjections()
+    if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta()
+    return this._state.contentGeneration
+  }
+
+  /**
+   * Project one message with every committed message projection applied.
+   * @param event - message-producing or log-only event.
+   * @returns its immutable projected message, or null when it produces none.
+   */
+  deriveEventMessage(event: SessionEvent): Message | null {
+    this._assertProjections()
+    if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta()
+    return deriveEventMessage(event, this._state.projectedMessages)
+  }
+
   /** Surface event sequences in model-visible order. */
   get nodes(): readonly SessionSeq[] {
+    this._assertProjections()
     if (this._lastProcessedSeq < this.baseSeq + this.log.length - 1) this._processDelta()
     return this._state.nodes
   }
@@ -557,10 +638,25 @@ export class SurfaceManager implements SessionSurface {
       if (pending?.event === event && pending.expectedSeq === seq) {
         applySurfacePlan(this._state, pending.plan)
       } else {
-        applySurfaceEvent(this._state, event, SessionSeq(seq), this.log, this.baseSeq)
+        applySurfaceEvent(this._state, event, SessionSeq(seq), this.log, this.baseSeq, this.projections)
       }
       if (pending !== undefined && pending.expectedSeq <= seq) this._pendingPlan = undefined
       this._lastProcessedSeq = SessionSeq(seq)
+    }
+  }
+
+  /** Cached messages cannot outlive the definitions that interpreted their log. */
+  private _assertProjections(): void {
+    const candidate = this._pendingPlan
+    const pending = candidate !== undefined && this.log[candidate.expectedSeq - this.baseSeq] === candidate.event
+      ? candidate.plan : undefined
+    const required = pending?.kind === 'project'
+      ? [...this._state.projections, pending.projection]
+      : this._state.projections
+    for (const projection of required) {
+      if (!this.projections.includes(projection)) {
+        throw new Error(`session message projection "${projection.type}" was removed or replaced; restore the session with its owning plugin`)
+      }
     }
   }
 }

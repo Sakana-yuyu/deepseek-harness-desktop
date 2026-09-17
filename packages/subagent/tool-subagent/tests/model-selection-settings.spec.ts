@@ -209,6 +209,30 @@ describe('SubagentModelSelectionConfig', () => {
     await ctx.fiber.dispose()
   })
 
+  it('installs one tool when recording the Session policy triggers a registry refresh', async () => {
+    const ctx = await boot()
+    try {
+      await ctx.settings.update(SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE, {
+        enabled: true,
+        allowedModels: ALLOWED_MODELS,
+      })
+      const preset = modelSelectionPresets.get(ctx)!
+      ctx.on('session/event', (_session, event) => {
+        if (event.type === 'subagent/model-selection-policy') {
+          ctx.emit(scopeTarget({}, scopeOf(preset.ctx)), 'tools/change')
+        }
+      })
+      const register = vi.spyOn(ctx.tools, 'register')
+
+      const agent = await createAgent(ctx, 'policy-refresh')
+
+      expect(selectable(ctx, agent)).toBe(true)
+      expect(register.mock.calls.filter(([definition]) => definition.name === 'subagent')).toHaveLength(1)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('rejects a forced route outside the Session policy before child creation', async () => {
     const ctx = await boot()
     await ctx.settings.update(SUBAGENT_MODEL_SELECTION_SETTINGS_NAMESPACE, {

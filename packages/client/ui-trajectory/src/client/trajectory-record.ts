@@ -80,6 +80,8 @@ export interface TrajectoryCellProps extends HTMLAttributes<HTMLDivElement> {
   resultPreviewMarkdown?: string
   /** Tool call id used to link message source blocks to tool records. */
   callId?: string
+  /** Recorded tool name; independent of the display summary. */
+  toolName?: string
   /** Tool-only result failure state. */
   isError?: boolean
   /** Own duration in seconds, or `null` when no duration is known. */

@@ -1,3 +1,4 @@
+import { imageOffloadProjection } from '@deepseek-ai/dsh-compaction-image-offload/projection'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -99,6 +100,7 @@ interface LoopHarness {
 async function loopHarness(): Promise<LoopHarness> {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
+  ctx.sessions.registerMessageProjection(imageOffloadProjection)
   await ctx.plugin(InvariantRegistry)
   await ctx.plugin(SessionInvariant)
   await ctx.plugin(AgentInvariant)
@@ -237,6 +239,28 @@ function compactEvents(session: Session): SessionEvent[] {
 }
 
 describe('compactNow through the real loop', () => {
+  it('passes logged image omissions to the summarizer without changing the original message', async () => {
+    const { ctx, agent, compact } = await loopHarness()
+    try {
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: PROMPT }, {
+          type: 'image',
+          attachment: { attachmentId: `sha256:${'a'.repeat(64)}` as never, mediaType: 'image/png', bytes: 1, width: 1, height: 1 },
+        }],
+        source: { kind: 'user' },
+      }))
+      await agent.whenIdle()
+      const source = agent.session.snapshotEvents().find(event => event.type === 'user/message')!
+      agent.session.append('image/offload', { targets: [{ seq: source.seq, imageIndexes: [0] }] })
+      expect(await compact.compactNow(agent, SIGNAL)).not.toBeNull()
+      const image = compact.calls[0]?.messages.flatMap(message => message.content).find(block => block.type === 'image')
+      expect(image).toMatchObject({ offloaded: true })
+      expect(JSON.stringify(source)).not.toContain('offloaded')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('holds a prompt accepted during summarization until the standalone bracket is flushed', async () => {
     const harness = await loopHarness()
     const { agent, compact, adapter, log } = harness

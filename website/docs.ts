@@ -326,7 +326,7 @@ const subsystemGroups = [
     ['jobs.md', '后台任务', 'Background jobs'],
     ['filesystem.md', '文件系统', 'Filesystem'],
     ['lsp.md', 'LSP 导航', 'LSP navigation'],
-    ['code-runtime.md', '代码运行时', 'Code runtime'],
+    ['ptc-runtime.md', 'PTC 运行时', 'PTC runtime'],
     ['web.md', 'Web 访问', 'Web access'],
     ['skills.md', '技能', 'Skills'],
     ['workflow.md', '工作流', 'Workflows'],

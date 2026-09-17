@@ -53,9 +53,10 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 The tool executes `bash -c <command>` and returns the combined output. Commands run in a fresh shell every call, so state never persists — pass `workdir` instead of `cd`. A non-zero exit is reported as `[exit code: N]` for the agent to interpret, not surfaced as a tool error. A `description` in active voice (5–10 words) labels the call in the UI; `timeoutMs` overrides the executor's default and cap. Output beyond the executor's stream caps is truncated to its tail, with the full output saved to a spill file whose path is reported.
 
+<a id="running-long-commands-in-the-background"></a>
 ### Running long commands in the background
 
-Passing `run_in_background: true` returns a job id immediately and no timeout applies; the command keeps running while the agent works on something else. The agent reads its output with `job_output` (non-blocking unless `wait: true`), lists jobs with `job_list`, and stops it with `job_kill`; a finished job notifies the owning agent in-session. Background support needs the generic job runtime (`dsh-jobs-local`) and its control tools (`dsh-tool-jobs`) mounted.
+Passing `run_in_background: true` admits a job and returns its id immediately; confinement preparation may still be pending, and no background execution timeout applies. Output is empty until the process is available. Job cancellation aborts preparation and stops any process that arrives afterward; startup failure settles the admitted job as failed. The agent reads its output with `job_output` (non-blocking unless `wait: true`), lists jobs with `job_list`, and stops it with `job_kill`; a finished job notifies the owning agent in-session. Background support needs the generic job runtime (`dsh-jobs-local`) and its control tools (`dsh-tool-jobs`) mounted.
 
 ### Sandboxed execution and escalation
 
@@ -87,7 +88,7 @@ This section explains the design decisions behind the tool and points at the cod
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: tool registration, prompt section, arg validation, escalation, request assembly |
-| [`src/background.ts`](src/background.ts) | Map a settled background process onto generic job outcome vocabulary |
+| [`src/background.ts`](src/background.ts) | Own asynchronous shell preparation and map process settlement onto job outcomes |
 | [`src/render.ts`](src/render.ts) | Model-facing result text: streams, markers, truncation notices |
 | — | No runtime invariant companion is published; the environment registry validates ownership and collected values at each mutation/read; it publishes no independent snapshot that a companion could cross-check. |
 

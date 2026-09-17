@@ -1,3 +1,4 @@
+import { OutputCollector } from '../src/output.ts'
 import { spawn as nodeSpawn, spawnSync as nodeSpawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, statSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -7,7 +8,6 @@ import {
   bindManagedProcess,
   childEnv,
   killGroup,
-  OutputCollector,
   spawnSubprocess,
   taskkillProcessTree,
   validateSubprocessSpec,
@@ -136,7 +136,8 @@ async function waitGone(pid: number, timeoutMs = 5_000): Promise<void> {
         const state = stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3)
         if (state === 'Z' || state === 'X') return
       } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+        const code = (error as NodeJS.ErrnoException).code
+        if (code === 'ENOENT' || code === 'ESRCH') return
         throw error
       }
     }

@@ -29,7 +29,7 @@ interface Bench {
 }
 
 /** Register a minimal registry-compatible live agent over a store session. */
-function liveAgent(ctx: Context, session: Session): Agent {
+async function liveAgent(ctx: Context, session: Session): Promise<Agent> {
   const status: AgentStatus = 'idle'
   const agent: Agent = {
     id: session.id,
@@ -46,7 +46,7 @@ function liveAgent(ctx: Context, session: Session): Agent {
     runMaintenance: task => task(new AbortController().signal),
     whenIdle() { return Promise.resolve() },
   }
-  ctx.agents.register(agent)
+  await ctx.agents.register(agent)
   return agent
 }
 
@@ -57,7 +57,7 @@ async function harness(withGoal: boolean): Promise<Bench> {
   await ctx.plugin(SessionProjectionRegistry)
   if (withGoal) await ctx.plugin(GoalService)
   const session = ctx.sessions.create()
-  const agent = liveAgent(ctx, session)
+  const agent = await liveAgent(ctx, session)
   return {
     ctx,
     session,
@@ -231,9 +231,8 @@ describe('goal projection unit', () => {
     expect(state).toBeDefined()
     Object.assign(state!, { failure })
 
-    expect(() => {
-      agentEvents(bench.ctx, bench.agent).emit('agent/session-start', { source: 'resume' })
-    }).not.toThrow()
+    await expect(agentEvents(bench.ctx, bench.agent).serial('agent/created', { source: 'resume' }))
+      .resolves.toBeUndefined()
     expect(() => bench.ctx.goals.get(bench.agent)).toThrow(failure)
     expect(bench.tailValues().goal).toMatchObject({ goal: { objective: 'poisoned replay' } })
   })

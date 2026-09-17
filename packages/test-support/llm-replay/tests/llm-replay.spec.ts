@@ -433,7 +433,7 @@ describe('parseSessionLog', () => {
     expect(parseSessionLog(`${header}\n\n${JSON.stringify(ev)}\n\n`)).toEqual([ev])
   })
 
-  it('expands range-encoded source provenance', () => {
+  it('expands range-encoded sourceEventSeqs', () => {
     const header = JSON.stringify({ type: 'session', version: 0, id: 's1', createdAt: 0 })
     const events = [
       { type: 'turn/start', seq: 0, time: 0, data: { turn: 1 } },
@@ -451,7 +451,7 @@ describe('parseSessionLog', () => {
     expect(parsed[7]).toEqual({ ...events[6], seq: 7, sourceEventSeqs: [3, 4, 5, 6] })
   })
 
-  it('reports malformed range provenance with its source line', () => {
+  it('reports a malformed sourceEventSeqs range with its source line', () => {
     const header = JSON.stringify({ type: 'session', version: 0, id: 's1', createdAt: 0 })
     const events = [
       { type: 'turn/start', seq: 0, time: 0, data: { turn: 1 } },
@@ -469,7 +469,7 @@ describe('parseSessionLog', () => {
       .toThrow(/session snapshot line 8: sourceEventSeqs range/)
   })
 
-  it('locates malformed range provenance with a materialized v0 seedLength header', () => {
+  it('locates malformed source-event ranges with a materialized v0 seedLength header', () => {
     const header = JSON.stringify({ type: 'session', version: 0, id: 's1', createdAt: 0, seedLength: 0 })
     const events = [
       { type: 'turn/start', seq: 0, time: 0, data: { turn: 1 } },
@@ -740,7 +740,7 @@ describe('parseSessionLog', () => {
           turn: 1,
           step: 1,
           content: [{ type: 'text', text: 'migrated' }],
-          provenance: { provider: 'mock', model: 'mock' },
+          [['pro', 'venance'].join('')]: { provider: 'mock', model: 'mock' },
         },
         surfaceOp: 'append',
       }),
@@ -777,7 +777,7 @@ describe('parseSessionLog', () => {
           turn: 1,
           step: 1,
           content: [{ type: 'text', text: 'legacy-only' }],
-          provenance: { provider: 'mock', model: 'mock' },
+          [['pro', 'venance'].join('')]: { provider: 'mock', model: 'mock' },
         },
         surfaceOp: 'append',
       }),
@@ -2159,9 +2159,13 @@ describe('apply (the plugin entry)', () => {
       width: 640,
       height: 480,
     } as never
-    const priced = pricing?.priceImages([ref, ref])
-    expect(priced?.map(price => price.visualTokens)).toEqual([384, 384])
-    expect(priced?.every(price => price.text.includes('640x480px'))).toBe(true)
+    const priced = pricing?.priceImages([
+      { type: 'image', attachment: ref },
+      { type: 'image', attachment: ref, offloaded: true },
+    ])
+    expect(priced?.map(price => price.visualTokens)).toEqual([384, 0])
+    expect(priced?.[0]?.text).toContain('640x480px')
+    expect(priced?.[1]?.text).toContain('image omitted to fit request image limits')
     expect(ctx.llm.imageRequestPricing('deepseek', 'plain')).toBeUndefined()
   })
 

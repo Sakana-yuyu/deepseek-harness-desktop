@@ -128,7 +128,7 @@ function parseFixtureRows(content: string, headerValue: unknown): SessionEvent[]
   // Versionless protocol fixtures and current projected snapshots use scalar
   // event rows. Current snapshots may contain owner-restored scrub tokens such
   // as `{{tools}}`; semantic replay restores those sidecars, while this layout
-  // gate owns only envelopes, provenance ranges, and one-event-per-row form.
+  // gate owns only envelopes, source-event ranges, and one-event-per-row form.
   const projectedCurrent = headerValue !== null
     && typeof headerValue === 'object'
     && !Array.isArray(headerValue)

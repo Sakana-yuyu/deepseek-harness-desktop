@@ -46,7 +46,7 @@ async function agent(ctx: Context, cwd: string | undefined): Promise<Agent> {
     whenIdle: () => Promise.resolve(),
   }
   await ctx.plugin(Object.assign((inner: Context) => { scope = createScope(inner, value) }, { inject: ['tools'] }))
-  ctx.agents.register(value)
+  await ctx.agents.register(value)
   return value
 }
 

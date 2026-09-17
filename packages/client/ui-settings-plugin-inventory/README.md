@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The **Plugin list** tab lets Web users inspect plugins without changing their configuration. It presents agent presets first and collapses the global inventory until needed. Cards retain the package name as the primary title, identify instances by stable entry id, and expose enablement, provenance, runtime status, disabled conditions, and discovery failures; preset-provided global entries name their presets. Search covers both groups and points to matches in other presets. The tab handles loading, empty, no-match, failure, and retry states without exposing transport details, and still shows the global inventory without a preset roster.
+The **Plugin list** tab lets Web users inspect plugins without changing their configuration. It presents agent presets first and collapses the global inventory until needed. Cards retain the package name as the primary title, identify instances by stable entry id, and expose enablement, source details, runtime status, disabled conditions, and discovery failures; preset-provided global entries name their presets. Search covers both groups and points to matches in other presets. The tab handles loading, empty, no-match, failure, and retry states without exposing transport details, and still shows the global inventory without a preset roster.
 
 ## Table of Contents
 

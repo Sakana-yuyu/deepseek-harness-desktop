@@ -41,7 +41,7 @@ interface DeliverablesState extends DeliverablesTurnData {
 
 /**
  * Extract the path from a supported first-party mutation call. Session
- * `tool/call` events are root calls; Code Dispatch children do not enter this
+ * `tool/call` events are root calls; PTC dispatch children do not enter this
  * Definition independently.
  * @param name - wire tool name.
  * @param argsRaw - model-produced JSON arguments.

@@ -245,7 +245,7 @@ describe('TextPreview — pages', () => {
     const next = Promise.withResolvers<Awaited<ReturnType<typeof h.read>>>()
     h.read.mockReturnValueOnce(next.promise)
     click(view.container, '[data-textpreview-more]')
-    expect(view.getByRole('status').textContent).toBe('loading')
+    expect(view.getByRole('status').getAttribute('aria-label')).toBe('loading')
     expect(lines(view.container)).toEqual(['held\n'])
     await act(async () => { next.resolve(page(2, ['tail'], true)); await next.promise })
     expect(view.queryByRole('status')).toBeNull()

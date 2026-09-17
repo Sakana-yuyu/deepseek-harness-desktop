@@ -518,11 +518,11 @@ export const IconUserOutline16 = ({ size = 16, className }: IconProps) => (
   </svg>
 )
 
-/** ic_ds_send_outline_16 */
-export const IconSendOutline16 = ({ size = 16, className }: IconProps) => (
-  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+/** ic_ds_paper_plane_outline_14 */
+export const IconPaperPlaneOutline14 = ({ size = 14, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
-      d="M8.3125 0.981587C8.66767 1.0545 8.97902 1.20558 9.2627 1.43374C9.48724 1.61438 9.73029 1.85933 9.97949 2.10854L14.707 6.83608L13.293 8.25014L9 3.95717V15.0431H7V3.95717L2.70703 8.25014L1.29297 6.83608L6.02051 2.10854C6.26971 1.85933 6.51277 1.61438 6.7373 1.43374C6.97662 1.24126 7.28445 1.04542 7.6875 0.981587C7.8973 0.94841 8.1031 0.956564 8.3125 0.981587Z"
+      d="M11.8249 1.11733C12.4401 0.929305 13.0795 1.42149 13.0238 2.08968L12.2321 11.5935C12.1751 12.2735 11.4312 12.6646 10.8386 12.3263L7.99539 10.7011L6.0967 12.7005L6.07413 12.7248L6.04808 12.7465C5.55601 13.1565 4.80867 12.8069 4.80833 12.1665V8.69211C4.80843 8.44469 4.90686 8.20727 5.08181 8.0323L9.79684 3.31641L2.46775 6.6988L4.10251 7.35253L3.67364 8.42559L1.57874 7.5878V7.5852C0.807611 7.2988 0.757207 6.21577 1.5145 5.86622L11.7025 1.16421L11.8249 1.11733ZM5.96474 11.1603L6.9614 10.1107L5.96474 9.54118V11.1603ZM6.32937 8.41864L11.1086 11.149L11.791 2.95698L6.32937 8.41864Z"
       fill="currentColor"
     />
   </svg>
@@ -935,6 +935,14 @@ export const IconArchiveOutline20 = ({ size = 20, className }: IconProps) => (
       fill="currentColor"
     />
     <path d="M12.7962 12.5661V11.0832H7.20548V12.5661L12.7962 12.5661Z" fill="currentColor" />
+  </svg>
+)
+
+/** Line-wrapping toggle glyph. */
+export const IconWrapLinesOutline16 = ({ size = 16, className }: IconProps) => (
+  <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none"
+    stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+    <path d="M1.5 3.5h13M1.5 7.5h10.25a2.5 2.5 0 0 1 0 5H8m2-2-2 2 2 2M1.5 11.5h3" />
   </svg>
 )
 

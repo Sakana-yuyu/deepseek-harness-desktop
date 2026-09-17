@@ -1,6 +1,7 @@
 /**
  * Delegation policy through child session events appended before publication:
- * the parent's sandbox override plus the pinned `approval/policy: never`.
+ * the parent's Auto identity and sandbox override plus the pinned
+ * `approval/policy: never`.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -14,7 +15,7 @@ import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-test
 import SandboxedFileSystem from '@deepseek-ai/dsh-fs-sandbox'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import SandboxPolicyService, { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
-import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { Session, SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
@@ -79,6 +80,61 @@ function toolResultTexts(agent: Agent): string[] {
 }
 
 describe('in-process policy inheritance', () => {
+  it.each(['auto', 'danger-full-access'] as const)(
+    'records the parent %s identity before publishing a DSH in-process child',
+    async (preset) => {
+      const { ctx, parent } = await setupWalled([textResponse('child done')])
+      parent.session.append('permission/preset', { preset })
+      setSandboxMode(parent.session, 'danger-full-access')
+      ctx.provide('permissionPresets', {
+        current: (session: Session) => session === parent.session ? preset : 'custom',
+      } as never)
+
+      const run = await startInProcessRun(spawnRequest(parent), {})
+      try {
+        await run.result
+        const child = run.localAgent as Agent
+        expect(child.session.snapshotEvents().slice(0, 3)).toMatchObject([
+          { type: 'sandbox/mode', seq: 0, data: { mode: 'danger-full-access', source: 'delegation' } },
+          { type: 'approval/policy', seq: 1, data: { policy: 'never', source: 'delegation' } },
+          { type: 'permission/preset', seq: 2, data: { preset } },
+        ])
+      } finally {
+        await run.dispose()
+      }
+    },
+  )
+
+  it.each([
+    { seedPreset: 'auto', preset: 'danger-full-access' },
+    { seedPreset: 'danger-full-access', preset: 'auto' },
+  ] as const)('captures $preset before child creation and overrides the $seedPreset fork prefix', async ({ seedPreset, preset }) => {
+    const { ctx, parent } = await setupWalled([textResponse('child done')])
+    parent.session.append('permission/preset', { preset: seedPreset })
+    setSandboxMode(parent.session, 'danger-full-access')
+    const seed = parent.session.snapshotEvents()
+    parent.session.append('permission/preset', { preset })
+    let currentPreset: 'auto' | 'danger-full-access' = preset
+    ctx.provide('permissionPresets', {
+      current: (session: Session) => session === parent.session ? currentPreset : 'custom',
+    } as never)
+
+    const starting = startInProcessRun(spawnRequest(parent), { seed })
+    currentPreset = seedPreset
+    parent.session.append('permission/preset', { preset: seedPreset })
+    const run = await starting
+    try {
+      await run.result
+      const child = run.localAgent as Agent
+      expect(child.session.snapshotEvents().filter(event => event.type === 'permission/preset')).toMatchObject([
+        { data: { preset: seedPreset } },
+        { data: { preset } },
+      ])
+    } finally {
+      await run.dispose()
+    }
+  })
+
   it('records the parent sandbox override and the approval pin before publishing a spawn child', async () => {
     const script: Script = []
     const { ctx, parent } = await setupWalled(script)

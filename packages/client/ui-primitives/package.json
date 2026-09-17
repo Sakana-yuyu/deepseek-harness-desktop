@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-primitives",
   "description": "Pure React atoms for the dsh web UI: controls, icons, markdown, and JSON inspectors (zero cordis)",
-  "version": "0.1.5-rc.2",
+  "version": "0.1.6-alpha.1",
   "publishConfig": {
     "access": "public"
   },
@@ -28,6 +28,7 @@
     "@deepseek-ai/cordis": "workspace:^",
     "react": "^18.2.0",
     "clsx": "^2.0.0",
+    "diff": "^9.0.0",
     "react-dom": "^18.2.0",
     "anser": "^2.3.5",
     "katex": "^0.16.47",

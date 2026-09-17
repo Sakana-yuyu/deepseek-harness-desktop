@@ -29,7 +29,7 @@ When the agent asks a question, the composer becomes the question surface: answe
 
 ### Answering
 
-A multi-select draft keeps its selected labels while the user opens or edits the custom answer, so its submitted item may carry both `selected` and `custom`; a single-select custom answer remains exclusive. Question detail reuses the assistant-output `MarkdownText` primitive, including its GFM rendering and untrusted-content policy. The capped card keeps its title, navigation, and submission actions fixed while long detail and choices share an internal scroll region. "Skip this question" retains other drafts and emits the existing blank `{ selected: [] }` result for that item, while close rejects the whole wait as `ASK_CANCELLED`.
+A multi-select draft keeps its selected labels while the user opens or edits the custom answer, so its submitted item may carry both `selected` and `custom`; a single-select custom answer remains exclusive. Question detail reuses the assistant-output `MarkdownText` primitive, including its GFM rendering and untrusted-content policy. The capped card keeps its title, navigation, and submission actions fixed while long detail and choices share an internal scroll region. "Skip" retains other drafts and emits the existing blank `{ selected: [] }` result for that item, while close rejects the whole wait as `ASK_CANCELLED`.
 
 ### The plan-review card
 

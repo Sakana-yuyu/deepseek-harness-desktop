@@ -91,6 +91,9 @@
     - id: tools
       name: '@deepseek-ai/dsh-tools'
 
+    - id: mcp-resources
+      name: '@deepseek-ai/dsh-mcp-resources'
+
     - id: agent
       name: '@deepseek-ai/dsh-agent'
 

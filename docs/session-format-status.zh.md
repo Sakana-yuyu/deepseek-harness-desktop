@@ -22,6 +22,8 @@
 
 产品的 alpha、beta 或 release-candidate 发布都会确立已发布 Session 格式的义务。GitHub 的 prerelease 标记不会让持久化用户数据成为可丢弃数据。缺少发布记录不代表尚未发布。[版本与真源决策](../.agents/notes/implemented/architecture/2026-08-10-session-log-version-mechanism.zh.md)拥有兼容性决策；[已发布格式迁移](../.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.zh.md)拥有不可变代际与相邻转换规则。
 
+[格式参考](persistence-changes/historical-formats/README.zh.md)记录从零到工作区写入器的每个整数版本，提供历史 schema 并引用现有的当前目录。
+
 <a id="release-record"></a>
 ## 发布记录
 
@@ -30,14 +32,14 @@ latestReleasedVersion: 3
 evidenceTag: dsh-v0.1.5-alpha.1
 ```
 
-证据：[已发布产品版本](https://github.com/deepseek-harness/deepseek-harness/releases/tag/dsh-v0.1.5-alpha.1)及[对应标签的写入器源码](https://github.com/deepseek-harness/deepseek-harness/blob/dsh-v0.1.5-alpha.1/packages/core/session/src/types.ts)。
+证据：已发布产品标签 `dsh-v0.1.5-alpha.1`；该标签的写入器路径：`packages/core/session/src/types.ts`。
 
 <a id="updating-the-record"></a>
 ## 更新记录
 
-实现结构性写入器变更时，一起更新代码常量与相邻迁移目录；不要在产品发布前推进此发布记录。当产品首次发布更高的 Session 格式时，确认发布事实及对应标签的写入器，然后在同一次双语更新中推进本记录与两个证据链接。后续携带相同格式的产品发布无需改变此记录。开发主干上的记录绝不降低。
+实现结构性写入器变更时，一起更新代码常量与相邻迁移目录；不要在产品发布前推进此发布记录。当产品首次发布更高的 Session 格式时，确认发布事实及对应标签的写入器，然后在同一次双语更新中推进本记录与证据标签及该标签的写入器路径。后续携带相同格式的产品发布无需改变此记录。开发主干上的记录绝不降低。
 
-[文档标准测试](../scripts/doc-standard.spec.ts)检查记录结构、双语一致性、证据链接一致性，以及文档中的已发布版本不高于工作区写入器。这个无密钥检查不会查询 GitHub，也不能证明记录是最新的；核实发布事实仍属于发布更新的一部分。
+[文档标准测试](../scripts/doc-standard.spec.ts)检查记录结构、双语一致性、证据标签及写入器路径一致性，以及文档中的已发布版本不高于工作区写入器。这个无密钥检查不会查询 GitHub，也不能证明记录是最新的；核实发布事实仍属于发布更新的一部分。
 
 一般行为使用“当前格式”和“下一条相邻版本”等表述。固定迁移的输入与输出、协议 schema、历史证据及针对特定版本的测试保留明确版本号。[格式版本实操手册](cookbook/adding-a-session-format-version.zh.md)用 N 表示已核实的最新发布格式，用 N+1 表示其后继版本。
 

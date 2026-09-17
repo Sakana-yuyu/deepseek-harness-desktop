@@ -34,6 +34,8 @@ kind: "package-library"
 
 Windows ACL 沙箱在这些原语上增加 SID、DACL、grant、workspace 与公共 child 策略。
 
+- **继承控制描述符**——Job 创建接受可选的 fd-7 管道。`STARTUPINFO.cbReserved2/lpReserved2` 携带八槽 CRT 描述符表，其中包含标准句柄、关闭的槽 3–6，以及槽 7 的控制管道。该表保留到 CreateProcess 返回；临时句柄继承在成功和失败时均恢复。在 Node 启动前初始化该槽可避免覆盖 Node 已分配的描述符。
+
 <a id="header-verification"></a>
 ## 头文件验证
 

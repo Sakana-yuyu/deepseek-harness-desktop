@@ -196,9 +196,7 @@ function finishError(finish: FinishReason): Error | undefined {
   switch (finish.kind) {
     case 'error':
     case 'aborted': {
-      const error = new Error(finish.failure.message) as Error & { code?: string }
-      error.code = finish.failure.code
-      return error
+      return new LlmError(finish.failure.message, finish.failure.code, finish.failure)
     }
     case 'max-tokens': {
       const error = new Error('summarization truncated at the token cap (incomplete checkpoint)') as Error & { code?: string }

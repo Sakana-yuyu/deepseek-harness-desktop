@@ -35,10 +35,12 @@ import { seedStoredSession } from './persistence-helpers.ts'
 type Script = ConstructorParameters<typeof MockAdapter>[0]
 
 const roots: string[] = []
+const projectionCacheDisposers: Array<() => Promise<void>> = []
 const persistenceDisposers: Array<() => Promise<void>> = []
 const projCacheRoots: string[] = []
 
 afterEach(async () => {
+  await Promise.all(projectionCacheDisposers.splice(0).map(dispose => dispose()))
   await Promise.all(persistenceDisposers.splice(0).map(dispose => dispose()))
   for (const root of projCacheRoots.splice(0)) rmSync(root, { recursive: true, force: true })
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
@@ -64,7 +66,8 @@ async function setup(
     await ctx.plugin(Storage)
     await ctx.plugin({ name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig }, { root })
     await ctx.plugin({ name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig }, { backend: 'json' })
-    await ctx.plugin(SessionProjectionCache, { writeEveryEvents: 100, writeIntervalMs: 60_000 })
+    const cache = await ctx.plugin(SessionProjectionCache, { writeEveryEvents: 100, writeIntervalMs: 60_000 })
+    projectionCacheDisposers.push(() => cache.dispose())
   }
   await ctx.plugin(TestSessionQuery)
   await ctx.plugin(SubagentRuntime)

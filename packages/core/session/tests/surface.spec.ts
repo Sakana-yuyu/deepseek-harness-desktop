@@ -64,7 +64,7 @@ function surfaceSession(): Session {
   return s
 }
 
-function provenanceEvent(seq: SessionSeq, sourceEventSeqs: unknown): SessionEvent {
+function sourceEventReferenceEvent(seq: SessionSeq, sourceEventSeqs: unknown): SessionEvent {
   return {
     type: 'user/message',
     seq,
@@ -104,10 +104,10 @@ function toolResultEvent(
 describe('foldSurface source-event references', () => {
   it('accepts absent or valid source-event references and complete replacement coverage', () => {
     const events = [
-      provenanceEvent(SessionSeq(0), undefined),
-      provenanceEvent(SessionSeq(1), undefined),
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(1), undefined),
       {
-        ...provenanceEvent(SessionSeq(2), [0, 1]),
+        ...sourceEventReferenceEvent(SessionSeq(2), [0, 1]),
         surfaceOp: surfaceOp({ op: 'replace', startSeq: 0, endSeq: 1 }),
       },
     ] as SessionEvent[]
@@ -125,7 +125,7 @@ describe('foldSurface source-event references', () => {
     expect(() => foldSurface([event])).toThrow(/cannot carry sourceEventSeqs/)
   })
 
-  it('rejects obsolete source-event provenance on an assistant message', () => {
+  it('rejects obsolete Assistant chunk references on an assistant message', () => {
     const event = {
       type: 'assistant/message',
       seq: SessionSeq(0),
@@ -150,19 +150,19 @@ describe('foldSurface source-event references', () => {
   })
 
   it.each([
-    ['a non-array', [{ ...provenanceEvent(SessionSeq(0), undefined), sourceEventSeqs: 'invalid' }], /must be an array/],
-    ['an empty array', [provenanceEvent(SessionSeq(0), [])], /must not be empty/],
-    ['duplicates', [provenanceEvent(SessionSeq(0), undefined), provenanceEvent(SessionSeq(1), [0, 0])], /must not contain duplicates/],
-    ['a sparse array', [provenanceEvent(SessionSeq(0), Array<number>(1))], /densely contain/],
-    ['a non-number', [{ ...provenanceEvent(SessionSeq(0), undefined), sourceEventSeqs: ['0'] }], /non-negative safe integers/],
-    ['a fractional number', [provenanceEvent(SessionSeq(0), [0.5])], /non-negative safe integers/],
-    ['a negative number', [provenanceEvent(SessionSeq(0), [-1])], /non-negative safe integers/],
-    ['a self reference', [provenanceEvent(SessionSeq(0), [0])], /must reference earlier events/],
-    ['a non-contiguous event seq', [provenanceEvent(SessionSeq(0), undefined), provenanceEvent(SessionSeq(2), [1])], /seq 2 is not contiguous; expected 1/],
+    ['a non-array', [{ ...sourceEventReferenceEvent(SessionSeq(0), undefined), sourceEventSeqs: 'invalid' }], /must be an array/],
+    ['an empty array', [sourceEventReferenceEvent(SessionSeq(0), [])], /must not be empty/],
+    ['duplicates', [sourceEventReferenceEvent(SessionSeq(0), undefined), sourceEventReferenceEvent(SessionSeq(1), [0, 0])], /must not contain duplicates/],
+    ['a sparse array', [sourceEventReferenceEvent(SessionSeq(0), Array<number>(1))], /densely contain/],
+    ['a non-number', [{ ...sourceEventReferenceEvent(SessionSeq(0), undefined), sourceEventSeqs: ['0'] }], /non-negative safe integers/],
+    ['a fractional number', [sourceEventReferenceEvent(SessionSeq(0), [0.5])], /non-negative safe integers/],
+    ['a negative number', [sourceEventReferenceEvent(SessionSeq(0), [-1])], /non-negative safe integers/],
+    ['a self reference', [sourceEventReferenceEvent(SessionSeq(0), [0])], /must reference earlier events/],
+    ['a non-contiguous event seq', [sourceEventReferenceEvent(SessionSeq(0), undefined), sourceEventReferenceEvent(SessionSeq(2), [1])], /seq 2 is not contiguous; expected 1/],
     ['incomplete replacement coverage', [
-      provenanceEvent(SessionSeq(0), undefined),
-      provenanceEvent(SessionSeq(1), undefined),
-      { ...provenanceEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 0, endSeq: 1 } },
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(1), undefined),
+      { ...sourceEventReferenceEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 0, endSeq: 1 } },
     ], /missing 1/],
   ] as const)(
     'rejects %s',
@@ -175,8 +175,8 @@ describe('foldSurface source-event references', () => {
 describe('foldSurface tool-result rewrites', () => {
   it('rejects a replacement spanning multiple current nodes', () => {
     const events = [
-      provenanceEvent(SessionSeq(0), undefined),
-      provenanceEvent(SessionSeq(1), undefined),
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(1), undefined),
       toolResultEvent(SessionSeq(2), 'rewrite', { op: 'replace', startSeq: 0, endSeq: 1 }, [0, 1]),
     ]
     expect(() => foldSurface(events)).toThrow(/must rewrite exactly one current node/)
@@ -184,7 +184,7 @@ describe('foldSurface tool-result rewrites', () => {
 
   it('rejects a replacement targeting a non-result node', () => {
     const events = [
-      provenanceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
       toolResultEvent(SessionSeq(1), 'rewrite', { op: 'replace', startSeq: 0, endSeq: 0 }, [0]),
     ]
     expect(() => foldSurface(events)).toThrow(/must target a current tool\/result/)
@@ -267,10 +267,10 @@ describe('SurfaceManager', () => {
   it('folds a contiguous window without materializing earlier event sequences', () => {
     const baseSeq = 400_000
     const events = [
-      provenanceEvent(SessionSeq(baseSeq), undefined),
-      provenanceEvent(SessionSeq(baseSeq + 1), undefined),
+      sourceEventReferenceEvent(SessionSeq(baseSeq), undefined),
+      sourceEventReferenceEvent(SessionSeq(baseSeq + 1), undefined),
       {
-        ...provenanceEvent(SessionSeq(baseSeq + 2), [baseSeq]),
+        ...sourceEventReferenceEvent(SessionSeq(baseSeq + 2), [baseSeq]),
         surfaceOp: surfaceOp({ op: 'replace', startSeq: baseSeq, endSeq: baseSeq }),
       },
     ] as SessionEvent[]
@@ -300,9 +300,9 @@ describe('SurfaceManager', () => {
   it('rejects a replacement that crosses a loaded window head', () => {
     const baseSeq = 400_000
     const events = [
-      provenanceEvent(SessionSeq(baseSeq), undefined),
+      sourceEventReferenceEvent(SessionSeq(baseSeq), undefined),
       {
-        ...provenanceEvent(SessionSeq(baseSeq + 1), [baseSeq - 1, baseSeq]),
+        ...sourceEventReferenceEvent(SessionSeq(baseSeq + 1), [baseSeq - 1, baseSeq]),
         surfaceOp: surfaceOp({ op: 'replace', startSeq: baseSeq - 1, endSeq: baseSeq }),
       },
     ] as SessionEvent[]
@@ -361,9 +361,9 @@ describe('SurfaceManager', () => {
 
   it('foldSurface reports the same invalid replacement failures as the incremental manager', () => {
     const events = [
-      provenanceEvent(SessionSeq(0), undefined),
+      sourceEventReferenceEvent(SessionSeq(0), undefined),
       { type: 'turn/start', seq: SessionSeq(1), time: 1, data: { turn: 1 } },
-      { ...provenanceEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 1, endSeq: 0 } },
+      { ...sourceEventReferenceEvent(SessionSeq(2), [0]), surfaceOp: { op: 'replace', startSeq: 1, endSeq: 0 } },
     ] as SessionEvent[]
 
     expect(() => foldSurface(events)).toThrow(/start seq 1 not found/)
@@ -373,7 +373,7 @@ describe('SurfaceManager', () => {
 
   it('rejects negative-zero replacement event sequences', () => {
     const event = {
-      ...provenanceEvent(SessionSeq(0), [0]),
+      ...sourceEventReferenceEvent(SessionSeq(0), [0]),
       surfaceOp: { op: 'replace', startSeq: -0, endSeq: -0 },
     } as SessionEvent
 

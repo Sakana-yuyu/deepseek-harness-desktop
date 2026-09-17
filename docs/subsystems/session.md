@@ -99,7 +99,9 @@ interface SessionEventMap {
   'tool/call': { turn: number; step: number; callId: ToolCallId; name: string; arguments: string }
   /**
    * A completed tool call's model-facing result, optional internal failure
-   * identity, and optional tool-private `meta` presentation payload. `meta` is
+   * identity and user-facing reason, and optional tool-private `meta`
+   * presentation payload. The reason remains outside the model-facing message.
+   * `meta` is
    * opaque to the core (the producing tool owns its shape and reads it back in
    * `presentResult`) but MUST be JSON-serializable: `Session.append`
    * runtime-validates all event data with `isJsonValue`, so a non-serializable
@@ -112,8 +114,11 @@ interface SessionEventMap {
     turn: number
     step: number
     message: ToolResultMessage
-    /** Optional failure identity; allowed only when the tool-result block has `isError: true`. */
-    error?: { name: string; code: string }
+    /**
+     * Optional failure identity and raw user-facing reason, outside model content;
+     * allowed only when the tool-result block has `isError: true`.
+     */
+    error?: { name: string; code: string; reason?: string }
     meta?: JsonValue
   }
   /**
@@ -272,7 +277,7 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 `SessionEventType = keyof SessionEventMap`. Because `SessionEventMap` is merge-extensible, switches over `SessionEvent` must NOT use `assertNever` — a plugin-added variant is a valid unknown value; handle the known cases and fall through `default`.
 
-Every surface event requires `surfaceOp`; known log-only events forbid both surface metadata fields. Native unknown or obsolete ignorable envelopes remain opaque. `assistant/message` embeds its provider stream and forbids `sourceEventSeqs`. System, user, and tool surface events may cite a complete non-empty set of unique earlier events when their provenance or replacement operation requires it. A `tool/result` may carry `data.error` only when its tool-result block has `isError: true`; failure identity remains optional for failed results.
+Every surface event requires `surfaceOp`; known log-only events forbid both surface metadata fields. Native unknown or obsolete ignorable envelopes remain opaque. `assistant/message` embeds its provider stream and forbids `sourceEventSeqs`. System, user, and tool surface events may cite a complete non-empty set of unique earlier events when source attribution or replacement coverage requires it. A `tool/result` may carry `data.error` only when its tool-result block has `isError: true`; failure identity remains optional for failed results.
 
 ## Surface types
 
@@ -339,11 +344,47 @@ Required for `SurfaceEventType` events — every message-producing event must de
 
 `assistant/message` cannot carry `sourceEventSeqs`; its `stream` owns exact provider evidence. Other surface events omit the field when they cite no earlier event and use a complete non-empty list when they do.
 
+<a id="plugin-owned-message-projections"></a>
+### Plugin-owned message projections
+
+Content-changing plugins mark their event declaration with `@messageProjection` and register a pure definition through `ctx.sessions.registerMessageProjection()`. Session validates the complete decision through that definition before commit, applies its immutable message updates, and advances `contentGeneration`. It rejects missing interpreters, including on restore and detached folding; unloading a used definition blocks cached reads. Detached readers pass explicit definitions to `foldSurface(events, projections)` and apply `projectedMessages` through `deriveEventMessage()`. The installed format catalog assembles first-party definitions for offline readers. The [image-offload plugin](compaction.md#image-offload) owns its image-specific event and interpretation.
+
+```ts type-equiv
+/** Readonly history immediately before a message-projection event. */
+interface SessionMessageProjectionContext {
+  /** Current message-producing event sequences in model-visible order. */
+  nodes: readonly SessionSeq[]
+  /** Contiguous event window; entries at or beyond the candidate seq are not committed inputs. */
+  events: readonly SessionEvent[]
+  /** Absolute sequence of the window's first event. */
+  baseSeq: SessionLogOffset
+  /** Previously projected messages keyed by their original event sequences. */
+  messages: ReadonlyMap<SessionSeq, Message>
+}
+```
+
+```ts type-equiv
+/** Pure interpretation of one plugin-owned event that changes existing message content. */
+interface SessionMessageProjection<T extends SessionEventType = SessionEventType> {
+  /** Event interpreted by this definition; declare it with `@messageProjection` in SessionEventMap. */
+  type: T
+  /**
+   * Validate the complete durable decision before returning any updates. Preserve
+   * message identities and publish immutable copies without mutating the input.
+   * @param event - candidate event, not yet applied to the supplied history.
+   * @param context - history preceding this decision.
+   * @returns changed current messages keyed by their original sequences.
+   * @throws when the durable decision cannot be applied to this history.
+   */
+  project(event: SessionEvent<T>, context: SessionMessageProjectionContext): ReadonlyMap<SessionSeq, Message>
+}
+```
+
 ### `SessionSurface` — the live readonly surface projection
 
 `Session.surface` returns the session's stable `SessionSurface` view. The same incremental manager validates append candidates before commit and advances this projection from committed events; callers can observe membership and replacement generation but cannot invoke validation.
 
-`SurfaceManager(log, baseSeq?)` can instead fold a contiguous loaded window whose first event has the absolute sequence `baseSeq`. Every event remains contiguous in that absolute sequence space, and a replacement that crosses the window head fails because its declared range is absent.
+`SurfaceManager(log, baseSeq?, projections?)` can instead fold a contiguous loaded window whose first event has the absolute sequence `baseSeq`. Every event remains contiguous in that absolute sequence space, and a replacement that crosses the window head fails because its declared range is absent.
 
 ```ts type-equiv
 /** Readonly live projection of the message-producing session events. */
@@ -352,12 +393,14 @@ interface SessionSurface {
   readonly nodes: readonly SessionSeq[]
   /** Monotonic count of committed positional replacements. */
   readonly replaceGeneration: number
+  /** Monotonic count of committed replacements and plugin-owned message changes. */
+  readonly contentGeneration: number
 }
 ```
 
 ### `SurfaceFoldReplacement` and `SurfaceFoldResult` — a complete surface replay
 
-`foldSurface(events)` returns detached current event sequences together with the actual sequences shadowed by each declared replacement range. The live manager uses the same transitions without retaining replacement history. Its `replaceGeneration` increments for each committed replacement so incremental consumers can distinguish pure tail growth from a rewrite.
+`foldSurface(events, projections)` returns detached current event sequences together with the actual sequences shadowed by each declared replacement range. The live manager uses the same transitions without retaining replacement history. Its `replaceGeneration` increments for each committed replacement so incremental consumers can distinguish pure tail growth from a rewrite.
 
 ```ts type-equiv
 /** One replacement operation observed while folding a session surface. */
@@ -380,6 +423,8 @@ interface SurfaceFoldResult {
   nodes: SessionSeq[]
   /** Replacement operations in event order. */
   replacements: SurfaceFoldReplacement[]
+  /** Immutable projected messages, keyed by their original event sequences. */
+  projectedMessages: ReadonlyMap<SessionSeq, Message>
 }
 ```
 
@@ -434,7 +479,7 @@ declare class Session {
    * When this lifecycle appends the marker, it occupies this seq before the
    * store attaches and therefore does not publish either. Otherwise this seq
    * holds an ordinary published write.
-  */
+   */
   readonly firstLiveSeq: SessionLogOffset;
   /**
    * Create a detached session by validating and snapshotting borrowed seed
@@ -443,14 +488,17 @@ declare class Session {
    * @param seed - optional borrowed replay or fork events.
    * @param header - optional borrowed storage metadata.
    * @param inheritedEventCount - exact fork-inherited prefix length for a seeded header.
+   * @param projections - pure interpreters for plugin-owned message changes.
    * @returns a detached session.
+   * @throws when a seed event requires a missing message interpreter or fails validation.
    */
   static create(
     id: SessionId,
     seed?: readonly SessionEvent[],
     header?: SessionHeader,
     inheritedEventCount?: SessionLogOffset,
-  ): Session;
+    projections?: readonly SessionMessageProjection[],
+    ): Session;
   /**
    * Restore a detached session by adopting an independently owned or deeply frozen seed.
    * Runtime-required event fields, event envelopes, sequence continuity, surface
@@ -462,7 +510,9 @@ declare class Session {
    * @param header - independently owned storage metadata.
    * @param inheritedEventCount - exact fork-inherited prefix length decoded from storage.
    * @param eventState - aliasing state carried from the operation that produced the seed.
+   * @param projections - pure interpreters for plugin-owned message changes.
    * @returns a restored detached session.
+   * @throws when a seed event requires a missing message interpreter or fails validation.
    */
   static fromRestore(
     id: SessionId,
@@ -470,7 +520,8 @@ declare class Session {
     header: SessionHeader,
     inheritedEventCount: SessionLogOffset,
     eventState: SessionSeedEventState,
-  ): Session;
+    projections?: readonly SessionMessageProjection[],
+    ): Session;
   /**
    * Return the immutable event stored at one exact sequence number.
    * @deprecated Existing logic may remain unmigrated for now, but new calls are prohibited.
@@ -492,7 +543,7 @@ declare class Session {
   snapshotEvents(
     fromSeq: SessionLogOffset = SessionLogOffset(0),
     toSeqExclusive: SessionLogOffset = this.seq,
-  ): readonly SessionEvent[];
+    ): readonly SessionEvent[];
   /**
    * Return this Session's events after its fork-inherited prefix.
    * @deprecated Existing logic may remain unmigrated for now, but new calls are prohibited.
@@ -549,7 +600,7 @@ declare class Session {
     type: T,
     data: SessionEventMap[T],
     ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent<T>] : []
-  ): SessionEvent<T>;
+    ): SessionEvent<T>;
   /**
    * The {@link EpochHeader} in force after the log's last header event — the
    * header the NEXT request will be compared against — or undefined before
@@ -572,21 +623,21 @@ declare class Session {
    * append records its `surfaceOp`, so a raw event with no marker (a chunk, a
    * turn boundary) is correctly absent, and a compaction `replace` deletes the
    * shadowed nodes from the derivation. The projection rules are
-   * {@link deriveEventMessage}, folded per node.
+   * {@link deriveEventMessage}, with logged message projections applied
+   * without changing node membership or message identity.
    *
-   * CACHED: each surface node is projected exactly once, when first seen — a
-   * call costs O(new nodes), and a surface rewrite (a `replace`;
-   * {@link SessionSurface.replaceGeneration}) rebuilds. The returned array is
+   * CACHED: pure tail growth costs O(new nodes); a replacement or message projection
+   * ({@link SessionSurface.contentGeneration}) rebuilds. The returned array is
    * a fresh snapshot per call (later appends never grow an array a caller
    * already holds); the `Message` objects in it are SHARED and **deep-frozen**.
-   * Their content reuses the already frozen durable event data, so the cache
-   * needs no second deep clone and consumers still cannot mutate the log.
+   * Unchanged content reuses frozen event data; projected blocks are frozen
+   * derived copies. Consumers cannot mutate the log through either form.
    * @returns a fresh array of the shared, frozen derived history.
    */
   deriveMessages(): Message[];
   /**
-   * Instance face of the pure per-node `deriveEventMessage` export from
-   * `surface.ts`.
+   * Project one event with all committed message projections applied.
+   * The original durable event remains unchanged.
    * @param event - the event to project.
    * @returns the derived message, or null when the event produces none.
    */
@@ -856,6 +907,15 @@ In-memory session store (`ctx.sessions`).
 Persistence is intentionally not implemented here — the agent lifecycle attaches a session-log writer to each published session's write handle; a session published outside that lifecycle persists nothing.
 
 ```ts cordis-catalog
+/**
+ * Register one event interpreter for live creation, restore, and fork.
+ * Disposing the contribution makes sessions that used it refuse further derivation.
+ * @param projection - pure definition owned by the event's plugin.
+ * @returns the fiber-owned disposer.
+ * @throws when another definition already owns this event type.
+ */
+registerMessageProjection(projection: SessionMessageProjection): () => Promise<void>
+
 /**
  * Create a session owned by the calling fiber: disposing that fiber stops
  * event notification and removes the session from the store. `options.seed`

@@ -1,6 +1,6 @@
 /**
  * The Remote side of one Session under test: default answers for every
- * `session/*` and `subagents/*` endpoint a `Session` calls, builders for
+ * `session/*` and `subagents/*` endpoint a `Session` or its manager calls, builders for
  * the two history-shaped answers, the `session/follow` opening snapshot and
  * the `session/page` page, both derived from event lists the way the Host
  * derives them from its log, and builders for the `session/control` queue
@@ -13,8 +13,8 @@ import { ok, type RemoteMock, type RemoteTable, type StreamScript, type UnaryRul
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteFailure, RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  SessionControlFrame, SessionFollowFrame, SessionFollowRequest, SessionPage, SessionPageRequest,
-  SessionQueuedItem, SessionRequestId,
+  SessionAssistantStreamBaseline, SessionControlFrame, SessionFollowFrame, SessionFollowRequest,
+  SessionPage, SessionPageRequest, SessionQueuedItem, SessionRequestId,
 } from '../../src/types.ts'
 import { entries, historyValue } from '../event-script.client.ts'
 import { followSnapshot, pageThrough } from './history.client.ts'
@@ -73,10 +73,16 @@ export async function pushEvent(mock: RemoteMock, event: SessionEvent): Promise<
  * then open for pushes. A failed answer fails the stream with its error; a
  * rejected one fails it with the rejection.
  * @param history - history answer or a function of the follow request.
- * @param options - `cursor` overrides the snapshot cursor.
+ * @param options - snapshot cursor and initial Assistant stream state; the latter may be read per opening.
  * @returns the script.
  */
-export function followScript(history: HistorySource<SessionFollowRequest>, options: { cursor?: number } = {}): StreamScript {
+export function followScript(
+  history: HistorySource<SessionFollowRequest>,
+  options: {
+    cursor?: number
+    assistantStream?: SessionAssistantStreamBaseline | (() => SessionAssistantStreamBaseline)
+  } = {},
+): StreamScript {
   return async ([request], stream) => {
     const follow = request as SessionFollowRequest
     const result = await answer(history, follow)
@@ -84,7 +90,10 @@ export function followScript(history: HistorySource<SessionFollowRequest>, optio
       stream.fail(result.error)
       return
     }
-    stream.push(followSnapshot(result.value, follow, options.cursor))
+    const assistantStream = typeof options.assistantStream === 'function'
+      ? options.assistantStream()
+      : options.assistantStream
+    stream.push(followSnapshot(result.value, follow, options.cursor, assistantStream))
   }
 }
 
@@ -167,7 +176,7 @@ export function queueFrame(
   return { type: 'queue', sessionId, items: items.map(queueItem) }
 }
 
-/** Default answers: every command accepted, an empty history, one attachment of one zero byte. */
+/** Default answers: every command accepted, empty history and subagent catalog, one attachment of one zero byte. */
 export const sessionWorld: RemoteTable = {
   unary: {
     'session/prompt': ok({ accepted: true }),
@@ -179,6 +188,7 @@ export const sessionWorld: RemoteTable = {
       data: 'AA==',
     }),
     'session/page': pageRule(ok({ records: [], hasMore: false })),
+    'subagents/list': ok({ entries: [], parentAvailable: true }),
     'subagents/prompt': ok({ messageId: 'fake-message' }),
     'subagents/interruptByParent': ok({ accepted: true }),
   },

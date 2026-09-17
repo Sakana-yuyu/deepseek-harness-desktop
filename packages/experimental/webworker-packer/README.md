@@ -23,6 +23,8 @@ The VFS image packer: turns one composed profile into the gzip-compressed base t
 <a id="use-this-package"></a>
 ## Use this package
 
+The public npm package exposes `packVfsImage` and `packVfsOverlay` through its library entry. Callers supply the composition, package directories, and resolution root; no profile layer is installed. The runtime's library entry supplies the module-proxy and replacement tables used during packing.
+
 The packer owns the internal `dsh.configTrees` declaration, its validation, and source directory resolution in [`src/repository.ts`](src/repository.ts). This field is not part of the public plugin manifest API.
 
 The pack is a three-layer standard stack:
@@ -54,6 +56,7 @@ None; this package neither assembles nor sends a provider request.
 - **Reachability infers only exact request forms** — computed `import` and `require` arguments, stored `createRequire` results, CommonJS-obtained `createRequire`, and bases other than `import.meta.url` resolve only at runtime and fail loud if the target was otherwise pruned; a target reachable only through those forms needs an explicit image entry seed.
 - **Vendored package sources (`src/*.ts`) are excluded** — nothing resolves them at runtime; a future in-worker source-inspection feature would need a dedicated include rule.
 - **The packer assumes built `lib/` artifacts are current**: it never compiles, so a stale workspace build packs stale bytes. Run the repository build first.
+- **The CLI requires its original repository location**: `dsh-pack-vfs-image` finds the checkout relative to its own installed file and reads the source CLI, configuration trees, and preview fixtures there. An npm installation supports the parameterized library API; the CLI and repository helpers require a complete, built DeepSeek Harness checkout.
 
 
 <a id="dev-note"></a>

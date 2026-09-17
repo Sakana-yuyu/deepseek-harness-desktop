@@ -48,7 +48,7 @@ With the tools installed, the model does the rest on request — for example, "c
 
 | Field | Default | Meaning |
 |---|---|---|
-| `maxMembers` | `8` | Maximum teammates a team may ever create, including failed ones |
+| `maxMembers` | `16` | Maximum teammates a team may ever create, including failed ones |
 | `maxTasks` | `256` | Maximum active tasks on the board |
 | `maxPendingMessagesPerMember` | `64` | Maximum queued messages for one member |
 | `maxMessageBytes` | `65,536` | Maximum size of one sent message |

@@ -27,7 +27,7 @@
 
 ## PDF
 
-- Viewer: PDF
+- Viewer menu hidden: true
 - Worker: dsh-pdf
 - Continuous pages: 2
 - Horizontal overflow: false
@@ -44,5 +44,10 @@
 
 ## Unknown suffix
 
-- Viewer: Plain text
+- Viewer menu hidden: true
 - Text: UNKNOWN_SUFFIX | Plain fallback.
+
+## Unviewable binary
+
+- State: unsupported
+- Line: Preview is not available for this file type yet.

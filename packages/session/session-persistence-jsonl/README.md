@@ -53,7 +53,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### On-disk layout
 
-Each session gets a session-owned directory under a readable project directory. Every canonical generation starts with a physical header whose version equals its filename. The current format stores one physical row per durable event; the frozen v0 and v1 readers also understand their historical packed Assistant-delta rows. The current format stores `isSeeded` in the header and derives the inherited cut from the last tagged `session/end-seed` marker, while historical codecs translate their numeric `seedLength`. The format catalog completes that translation before a handle exposes current logical values. Current storage records use the lossless provenance representation described below:
+Each session gets a session-owned directory under a readable project directory. Every canonical generation starts with a physical header whose version equals its filename. The current format stores one physical row per durable event; the frozen v0 and v1 readers also understand their historical packed Assistant-delta rows. The current format stores `isSeeded` in the header and derives the inherited cut from the last tagged `session/end-seed` marker, while historical codecs translate their numeric `seedLength`. The format catalog completes that translation before a handle exposes current logical values. Current storage records use the lossless source-event representation described below:
 
 ```text
 <root>/

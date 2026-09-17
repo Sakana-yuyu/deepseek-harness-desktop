@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当模型应该通过工具运行一支团队时，在 `@deepseek-ai/dsh-experimental-agent-team` 之上挂载本包。挂载后，每个团队成员——Lead 与每个 teammate——都会获得相同的九个工具，外加一段说明自身角色与名字的策略段落。
+当模型应该通过工具运行一支团队时，在 `@deepseek-ai/dsh-experimental-agent-team` 之上挂载本包。挂载后，每个团队成员——Lead 与每个 teammate——都会获得相同的九个工具，以及相同的协作策略。`spawn_teammate` 在初始任务前加上 teammate 的角色和名字。
 
 ### 何时选择
 
@@ -81,7 +81,7 @@ kind: "package-reference"
 
 适配器建立在三项承诺之上：
 
-- **按作用域，而非全局。** 每个注册都位于成员 Agent（智能体）自己的 `ctx` 上；非 Team subagent 或宿主不会安装任何内容。
+- **按作用域，而非全局。** 每个注册都位于成员 Agent（智能体）自己的 `ctx` 上；安装依据 Agent 发布时可用的成员身份。
 - **声明式结果，紧凑 JSON。** 每个工具都声明完整结果 schema，并把该值渲染为紧凑 JSON，因此编译器会对照向模型承诺的结果检查 `execute`，任何结果都不会在缩进上消耗 token。
 - **领域掌握裁决权。** 工具委托给 `ctx.agentTeams`，后者强制执行 Lead 权限与 revision 校验；适配器不添加更弱的路径。
 
@@ -96,7 +96,7 @@ kind: "package-reference"
 
 ### 策略与工具
 
-member scope 上的一个 `team:policy` 段落教每个成员自己的角色与协作规则；固定文本与九个工具注册都声明在 [`src/index.ts`](src/index.ts)。九个工具 schema 只出现在 Team member scope 中，因此非 Team subagent 保持默认目录。与旧全局 continuable-subagent 控件同名的 scoped 注册只会为团队成员覆盖这些全局控件。
+member scope 上的一个 `team:policy` 段落说明共享的协作规则；固定文本与九个工具注册都声明在 [`src/index.ts`](src/index.ts)。九个工具 schema 注册在发布时被识别为 Team member 的 scope 中。与旧全局 continuable-subagent 控件同名的 scoped 注册只会为团队成员覆盖这些全局控件。
 
 ### 按作用域注册与拆除
 
@@ -125,20 +125,21 @@ member scope 上的一个 `team:policy` 段落教每个成员自己的角色与�
 
 #### 模型看到什么
 
-一段稳定策略会说明确切 Team role／name／id、显式 delegation 要求、共享 cwd 行为、文件陈旧版本恢复、Bash／formatter／codegen 风险、task／write-scope 协调、Steer 投递、mailbox 不重试规则，以及 Lead 必须在回答前等待。`spawn_teammate` 到 `team_task_update` 的九个 Team schema 只出现在 Team member scope。
+一段共享 system 策略会说明显式 delegation 要求、共享 cwd 行为、文件陈旧版本恢复、Bash／formatter／codegen 风险、task／write-scope 协调、Steer 投递、mailbox 不重试规则，以及 Lead 必须在回答前等待。Lead 与 teammate 的全部九个 Team schema 相同；执行时检查仅限 Lead 的操作权限。`spawn_teammate` 在初始 user 消息前加上 `<system-reminder>\nYou are teammate "<name>".\n</system-reminder>`，接着是一个空行和任务。该前缀不含 Team id，禁用运行时上下文时也能生效。fork 继承历史，不额外添加 Lead 身份消息。
 
 #### Token 影响
 
-每次 Team member 请求都有固定策略与 schema 成本。工具调用会增加紧凑 JSON roster、task、wait 或 receipt 结果。Peer 内容由 Team 领域保留在 target 历史中。
+每次 Team member 请求都有固定策略与 schema 成本。初始身份文本随普通历史经历后续步骤、冷恢复和压缩；插件不扫描或重新插入它。工具调用会增加紧凑 JSON roster、task、wait 或 receipt 结果。Peer 内容由 Team 领域保留在 target 历史中。
 
 #### KV Cache 影响
 
-Team 插件 generation、配置、member role／name 与 schema 不变时，前缀保持稳定。每个成员的身份行不同。工具结果与 peer 消息追加在可复用请求前缀之后。
+provider／model、共享 system 策略和工具 schema 相同时，fork 保留父请求前缀并追加带身份前缀的初始任务。工具结果与 peer 消息追加在可复用请求前缀之后。原先在 system prompt 中记录身份的 Session，首次使用此布局请求时可能改变该前缀；提供方实际缓存命中仍为尽力而为。
 
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
 
+- **一次性子代理工具可见性**——进程内一次性子代理在发布后才获得 subagent descriptor。Team 安装因此可能将它们误认作 Lead 并暴露 Team 策略和工具。descriptor 将它们识别为非成员后，调用会被拒绝。安装时序修复留待以后处理。
 
 这些限制说明策略与工具无法为一支团队保证什么。它们是当前包约束，不是与其他协作方式的对比。
 

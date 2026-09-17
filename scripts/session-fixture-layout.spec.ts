@@ -143,7 +143,7 @@ describe('canonicalSessionFixture', () => {
     expect(canonicalSessionFixture(content)).toBe(content)
   })
 
-  it.each([0, 1, 2])('rejects v%i sequence gaps and invalid provenance ranges with source line diagnostics', (version) => {
+  it.each([0, 1, 2])('rejects v%i sequence gaps and invalid source-event ranges with source line diagnostics', (version) => {
     const header = JSON.stringify({ type: 'session', version, id: 'historical', createdAt: 1, delegationDepth: 0, ...(version === 2 ? { isSeeded: false } : {}) })
     expect(() => canonicalSessionFixture(`${header}\n{"type":"feedback/record","seq":3,"data":{"text":"gap"}}\n`, 'gap.jsonl'))
       .toThrow(/gap\.jsonl: session snapshot line 2:.*seq/)

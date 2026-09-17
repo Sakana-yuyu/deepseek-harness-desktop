@@ -13,6 +13,7 @@ import {
 import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
 import { inspectSystemPrompt } from '../../ui-conversation/src/client/contract/system-prompt.ts'
 import { AssistantStreamAccumulator } from '@deepseek-ai/dsh-llm/assistant-stream'
+import { LlmAttemptId } from '@deepseek-ai/dsh-llm/brand'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import { hasAssistantReplyContent } from '../src/client/contract/assistant-content.ts'
 import { assistantDefinition } from '../src/client/conversation-nodes/assistant.ts'
@@ -941,6 +942,56 @@ describe('built-in conversation node Definitions', () => {
     })
   })
 
+  it('omits first-token metrics after live settlement and after reopening the same history', () => {
+    const attemptId = LlmAttemptId('settled-chat-timing')
+    const starts = [
+      at(1, 'turn/start', { turn: 1 }, { time: 1_000 }),
+      at(2, 'step/start', { turn: 1, step: 1 }, { time: 1_010 }),
+    ]
+    const value = assembler(starts)
+    const chunk = { type: 'text-delta' as const, index: 0, text: 'Answer' }
+    value.append({
+      type: 'transient',
+      event: {
+        type: 'assistant/live-chunk', seq: 2.5, time: 1_030,
+        data: { attemptId, turn: 1, step: 1, chunk },
+      },
+    })
+    value.flush()
+    expect(node(snapshot(value), 'assistant-step')?.data).toMatchObject({
+      status: 'running', time: 1_030, blocks: [{ kind: 'text', text: 'Answer' }],
+    })
+
+    const stream = new AssistantStreamAccumulator()
+    stream.push({ time: 1_030, chunk })
+    const event = at(3, 'assistant/message', {
+      turn: 1, step: 1, message: assistantMessage('settled-timing', 'Answer'),
+      stream: stream.snapshot(), usage: { outputTokens: 10 },
+    }, { surfaceOp: 'append', time: 1_050 }).event
+    if (event.type !== 'assistant/message') throw new Error('expected Assistant settlement')
+    const settlement = { type: 'event' as const, event }
+    value.settleAssistant(attemptId, settlement)
+    const ends = [
+      at(4, 'step/end', { turn: 1, step: 1 }, { time: 1_060 }),
+      at(5, 'turn/end', { turn: 1, reason: { kind: 'completed' } }, { time: 1_070 }),
+    ]
+    for (const end of ends) value.append(end)
+    value.flush()
+
+    const reopened = assembler([...starts, settlement, ...ends])
+    for (const current of [value, reopened]) {
+      const view = snapshot(current)
+      const assistant = (node(view, 'assistant-step')?.data as AssistantChatData).finalNode
+      expect(assistant?.timing).toEqual({
+        stepStartTime: 1_010, firstTokenTime: null, completedTime: 1_050,
+      })
+      const tail = node(view, 'turn-tail')?.data as TurnTailChatData
+      expect(tail.turn).toBe(1)
+      expect(tail.ttftMs).toBeUndefined()
+      expect(tail.tokensPerSecond).toBeUndefined()
+    }
+  })
+
   it('uses live Assistant deltas without replaying settled embedded streams', () => {
     const runningHistory = [
       at(1, 'turn/start', { turn: 1 }),
@@ -1135,7 +1186,8 @@ describe('built-in conversation node Definitions', () => {
         subCallId: 'child',
         name: 'read',
         arguments: { path: 'README.md' },
-        isError: false,
+        isError: true,
+        error: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: 'blocked' },
         content: [{ type: 'text', text: 'contents' }],
       }),
       at(16, 'tool/result', {
@@ -1146,7 +1198,10 @@ describe('built-in conversation node Definitions', () => {
     ], true)
     const before = node(snapshot(history), 'tool-call')
     expect((before?.data as ToolChatData).root.subCalls).toMatchObject([
-      { kind: 'tool-result', callId: 'child', parentCallId: 'history-root', call: { name: 'read' } },
+      {
+        kind: 'tool-result', callId: 'child', parentCallId: 'history-root', call: { name: 'read' },
+        error: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: 'blocked' },
+      },
     ])
 
     history.prepend([
@@ -1165,7 +1220,10 @@ describe('built-in conversation node Definitions', () => {
     const after = node(snapshot(history), 'tool-call')
     expect(after?.key).toBe(before?.key)
     expect((after?.data as ToolChatData).root.subCalls).toMatchObject([
-      { kind: 'tool-result', callId: 'child', parentCallId: 'history-root', call: { name: 'read' } },
+      {
+        kind: 'tool-result', callId: 'child', parentCallId: 'history-root', call: { name: 'read' },
+        error: { name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED', reason: 'blocked' },
+      },
     ])
 
     const firstChild = (after?.data as ToolChatData).root.subCalls[0]
@@ -1433,7 +1491,7 @@ describe('built-in conversation node Definitions', () => {
 
     expect(node(snapshot(value), 'context')?.data).toMatchObject({
       kind: 'context',
-      provenance: { role: 'inject', label: 'demo-skill' },
+      producer: { role: 'inject', label: 'demo-skill' },
       form: 'instructions',
     })
   })

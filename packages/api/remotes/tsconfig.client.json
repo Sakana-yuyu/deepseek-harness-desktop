@@ -48,6 +48,9 @@
       "path": "../../interaction/commands"
     },
     {
+      "path": "../../interaction/permission-presets"
+    },
+    {
       "path": "../../llm/llm"
     },
     {
@@ -82,6 +85,9 @@
     },
     {
       "path": "../../feedback/command-feedback"
+    },
+    {
+      "path": "../terminal-controller/tsconfig.client.json"
     }
   ]
 }

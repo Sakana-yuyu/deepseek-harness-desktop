@@ -1,4 +1,4 @@
-/** Complete image bytes rendered at their intrinsic CSS-pixel dimensions. */
+/** Complete image bytes rendered rounded within an inset frame, scaled down to the pane's width. */
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { pathPartsOf } from '@deepseek-ai/dsh-util-workspace-path'
@@ -46,9 +46,11 @@ export function imageMediaType(path: string): ImageMediaType | undefined {
 }
 
 /**
- * Present complete image bytes without fitting or scaling them to the pane.
+ * Present complete image bytes fitted to the pane's width.
  * @param props - document bytes, resource identity, and locale.
- * @returns an intrinsic-size image whose containing document body provides scrolling.
+ * @returns a rounded image scaled down to the pane's width at its aspect
+ * ratio — a smaller image centres at its intrinsic size — whose containing
+ * document body provides vertical scrolling.
  */
 export function ImageBody({ content, resourceAddress, t }: ImageBodyProps): ReactNode {
   const path = useMemo(() => hostFileOf(resourceAddress).path, [resourceAddress])

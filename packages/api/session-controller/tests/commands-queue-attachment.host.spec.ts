@@ -82,7 +82,7 @@ async function commandHarness(
     followup: vi.fn(),
     cancel,
   } as unknown as Agent
-  ctx.agents.register(agent)
+  await ctx.agents.register(agent)
   ctx.provide('workspaceRegistry', { get: () => undefined, list: () => [] } as never)
   ctx.provide('agentDefaultModel', {
     currentSelection: () => ({ provider: 'fixture', model: 'fixture-model' }),

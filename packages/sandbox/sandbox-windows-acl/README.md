@@ -107,6 +107,8 @@ node runner.js --workspace <dir> --temp <dir> --mode <read-only|workspace-write>
 
 The seam materializes the deterministic workspace SID's ACE standing (once per workspace per server lifetime — the reuse cache), then creates a random private temp directory and a distinct revocable SID for each live session/workspace pair, passing both as the required `--write-sid`/`--temp-write-sid` pair; the runner verifies each against its owning path and neither grants nor revokes (`manageDacls: false`). A fork receives a different temp capability, and a fresh provider gives even the same resumed session a new path and SID, so crash residue is inert litter. Without the pair, `--temp` names a root: an agentless workspace-write runner creates a random private child, self-manages its temp SID, rewrites TMP/TEMP, and removes the child on exit. Re-granting the standing workspace ACE after a restart is idempotent: `grantWrite` reads the current DACL and skips the re-propagation when the exact ACE already stands. A workspace equal to or containing the temp root is rejected before any grant.
 
+When launched with the subprocess control marker, the runner forwards fd 7 through the restricted child's CRT startup table and closes its own copy immediately after spawn. The optional `controlFileDescriptor: 7` input requires `stdio: 'inherit'`; requesting it with piped stdio fails before process creation.
+
 ### Verified boundaries
 
 - **Everyone grants remain ambient write authority** — Everyone must stay in both restricting lists (removing it breaks early DLL initialization and CNG); an external NTFS object whose DACL grants Everyone a requested write right clears both checks and stays writable under both modes.

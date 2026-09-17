@@ -66,7 +66,7 @@ if (result.timedOut) console.log('timed out after', result.timeoutMs)
 
 ### 后台进程
 
-调用 `start` 即可在后台运行命令；它立即返回句柄，且不应用任何超时。`readOutput()` 把流增量合并为一次消费式读取，并在 `[stderr]` 分段下标记 stderr；`kill()` 终止由提供方管理的 range；`done` 在 direct command 关闭时结算且绝不 reject。job id、所有权、轮询与通知属于通用 `ctx.jobs` 运行时，工具层会把句柄注册进去。
+等待 `start` 即可在后台运行命令；它完成准备后返回进程句柄，且不应用执行超时。取消或准备失败会在发布句柄前拒绝调用。`readOutput()` 把流增量合并为一次消费式读取，并在 `[stderr]` 分段下标记 stderr；`kill()` 终止由提供方管理的 range；`done` 在 direct command 关闭时结算且绝不 reject。job id、所有权、轮询与通知属于通用 `ctx.jobs` 运行时，工具层会把句柄注册进去。
 
 <a id="adjusting-budgets-at-runtime"></a>
 ### 运行时调整预算
@@ -99,6 +99,8 @@ if (result.timedOut) console.log('timed out after', result.timeoutMs)
 ### 主要流程
 
 一次调用分三步：`resolve()` 从配置填充 `workdir`/`timeoutMs`/`stdoutMaxBytes`（并限制每次调用的 `timeoutMs` 覆盖值）；执行器构建 pwsh argv——`pwsh -NoLogo -NoProfile -NonInteractive -Command <编码 preamble + 命令>`——把按配置钳位的超时与调用方的中止信号融合为一个 deadline，再以显式字节上限与 `graceMs` 通过 `ctx.subprocess` spawn；结算的结果被分类并投影为 `ShellRunResult`。Windows 把强制终止报告为退出码 1 且无信号，因此带信号标记的事实在那里仅限 POSIX；超时/取消分类则与平台无关。
+
+前台 deadline 从 argv 准备开始，并在准备与执行之间保持同一信号和剩余预算。准备阶段超时返回空输出、`timedOut: true`，且 `exitCode` 和 `signal` 均为 `null`；调用方在发布进程前取消仍会拒绝调用。准备晚到的成功或失败不会触发 spawn。
 
 ### 不变式与归属
 

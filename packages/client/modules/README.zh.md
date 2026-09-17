@@ -67,11 +67,13 @@ application combo 脚本在启动时仅注册一次插件 factory；模块主体
 
 Node 半侧逐包增量扫描——没有全量重扫路径。每次发出 `internal/plugin` 事件时，系统都会把该 fiber 的 entry 名标脏；微任务 flush 会把每个脏名与当前 loader 条目对账，激活 pass 会初始化同一个脏集合并同步 flush，因此首次扫描与稳态共用同一实现。包元数据按 Loader specifier 与所属 tree base URL 缓存至重启，解析出的 manifest（元数据清单）包名作为浏览器模块身份。若不同的 active Loader source 解析到同一包名，组合会失败；移除冲突来源后，剩余来源无需重启 fiber 即可接替。bundle 内容变更只能通过 `rebuilt()`（HMR 钩子）进入图。
 
-Node 半侧会在发布前快照每个客户端 bundle 及其现有 source map。它把资源分组到 `/plugins/??...&rev=...` combo URL：modules row 使用一个 bootstrap combo，其余 row 使用一个或多个 application combo；每个阶段都会在 URL 超过 3 KiB 之前分区。每个 combo map 都是 Indexed Source Map v3，并在可用时使用作者提供的 section，否则为已打包 bundle 生成 identity section。初始逐插件 revision 使用进程 nonce，所以启动时不哈希每个插件；HMR 只哈希被报告为已变化的产物。已公告响应不可变；未知组合或 revision 返回 404。
+Node 半侧会在发布前快照每个客户端 bundle，并在不构建响应 body 的情况下创建 combo descriptor。它把资源分组到 `/plugins/??...&rev=...` combo URL：modules row 使用一个 bootstrap combo，其余 row 使用一个或多个 application combo；每个阶段都会在 URL 超过 3 KiB 之前分区。脚本 body 在首次 `GET` 时只组合一次，并以对应 map URL 结尾；map 文件则在首次 map `GET` 时单独读取、校验并组合，`HEAD` 不会物化任一 body。每个 combo map 都是 Indexed Source Map v3，并在可用时使用作者提供的 section，否则为已打包 bundle 生成 identity section。初始逐插件 revision 使用进程 nonce，HMR 只哈希变化的 bundle，combo revision 从有序 row revision 派生。已公告响应在首次物化后保持不可变；未知组合或 revision 返回 404。
 
 ### 启动 manifest 注入
 
-宿主贡献结构化 index 行，并向 `<head>` 注入：`window.__ModuleLoader__` queue facade、每个 application combo 的提示性 preload、阻塞 parser 的 bootstrap combo 脚本，然后才是外壳读取前的启动图。Web 载体把这些行渲染进 index 响应；由 shell 持有的载体则可以在没有 Web server 时渲染同一批行。facade 的 `create()` 物化 modules bundle、把构造委托给其 `createClientModuleSystem` 导出，并让同一 facade 进入 live registration 模式。
+bundle 路由随注入的 `webServer` 生命周期注册：服务就绪时注册，服务被替换时移除并重新注册。模块组合与 `fetchBundle()` 在没有 Web server 时仍可用。
+
+宿主贡献结构化 index 行，并向 `<head>` 注入：`window.__ModuleLoader__` queue facade、每个 application combo 的提示性 preload、阻塞 parser 的 bootstrap combo 脚本，然后才是外壳读取前的启动图。Web 载体把这些行渲染进 index 响应；由 shell 持有的载体则可以在没有 Web server 时渲染同一批行。facade 的 `create()` 物化 modules bundle、把构造委托给其 `createClientModuleSystem` 导出，并让同一 facade 进入 live registration 模式。外壳把返回的系统装成自身 Loader 的 `internal`；modules 插件将该实例发布为 `ctx.modules`，因此不同 Cordis 树不会通过模块级全局状态选择实例。
 
 ### 源码索引
 
@@ -117,7 +119,8 @@ Node 半侧会在发布前快照每个客户端 bundle 及其现有 source map�
 
 - **有意采用扁平模块图**——每个 bundle 是一个模块节点，其边只指向表中的叶节点；接口（`loadCache`/`edges`/`invalidate`）已经支持通用模块图，因此可以改变 externalization 粒度而不更改接口。
 - **自身不维护卸载记录**——样式移除与 fiber 拆卸顺序属于 HMR 驱动器（`@deepseek-ai/dsh-client-hmr`）；loader 只在每条记录中登记其拥有的样式标签 id。
-- **快照式提供会保留产物字节**——Host 在内存中保留每个 bundle、可选 source map、生成的单资源响应和当前启动 combo 响应；HMR 还会保留上一代启动响应。内存会随已组合客户端产物增长为数份副本，以换取不可变响应和一代竞态容忍。
+- **惰性提供会保留已请求的 body**——Host 在内存中保留每个 bundle 与惰性响应计划；脚本或 map body 在首次 `GET` 后保留缓存，HMR 还会保留上一代启动响应。内存仅随客户端实际请求的响应 body 增长，同时保留一代竞态容忍。
+- **从未请求的上一代 map 会读取当前 map 文件**——combo revision 跟踪可执行 bundle，而不跟踪调试产物。若 HMR 在保留的旧 URL 首次收到 map `GET` 前重建 map，该响应会把当前 authored map 与旧 bundle offset 组合；在重建前请求 map 会固定该 URL 的响应。
 
 <a id="dev-note"></a>
 ### 开发备注

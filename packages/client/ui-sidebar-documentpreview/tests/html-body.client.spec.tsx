@@ -129,7 +129,7 @@ describe('HtmlBody', () => {
       readRelated: bytes,
     } as unknown as HtmlBodyProps
     render(<HtmlBody {...initial} />)
-    expect(screen.getByRole('status').textContent).toBe(en.loading)
+    expect(screen.getByRole('status').getAttribute('aria-label')).toBe(en.loading)
     expect(screen.getByRole('status').hasAttribute('data-document-loading')).toBe(true)
     expect(create).not.toHaveBeenCalled()
     expect(await screen.findByTitle(en.frame)).toBeTruthy()

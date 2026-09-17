@@ -95,13 +95,13 @@ for await (const chunk of ctx.llm.stream({
 | [`src/call-config.ts`](src/call-config.ts) | 调用配置校验、适配器默认值填入与请求冻结 |
 | [`src/retry-policy.ts`](src/retry-policy.ts) | 提供方自有重试策略解析（normal 与 always 模式） |
 | [`src/error.ts`](src/error.ts) | `HarnessError`/`LlmError` 分类体系与提供方无关失败 code |
-| [`src/content.ts`](src/content.ts) | 共享文件与图片投影辅助函数，包括请求图片卸载 |
+| [`src/content.ts`](src/content.ts) | 共享文件与图片辅助函数：内容遍历、文件投影、图片卸载计数与已卸载图片投影 |
 | [`src/api-key.ts`](src/api-key.ts) | 每个适配器共享的凭据格式校验 |
 | [`src/adapter-failure.ts`](src/adapter-failure.ts) | 把失败归一化为终止 finish 分片 |
 
 ### 主流程
 
-请求会对照其精确模型的能力——上下文窗口、输出默认值、推理强度、输入模态与 `systemPromptUpdate` 模式——校验，填入任何适配器配置的默认值，然后整个请求被深度冻结。`prepareCall()` 把这些事实、分离的上下文与重试策略绑定到执行最终分发的精确适配器代次，因此 HMR（热模块替换）或动态设置无法把一个代次的图片能力与另一代次的端点混用。支持图片的适配器把持久引用投影为路由专用请求版本；`resolveImageAttachmentAccess()` 会单独把附件提供方的可选宿主对象映射进当前工具执行世界，而不改变请求图片或其 `variantId`。纯文本路由接收确定性的逐图片占位符，包括嵌套工具结果图片，而不会改写仅追加会话历史。持久 `FileBlock` 引用永远不会到达任何适配器：请求组装把每个引用（包括嵌套工具结果中的出现）替换为确定性句柄文本，指出文件与其只读保存路径，路径经由挂载的附件与文件系统提供方解析。`ctx.llm.fileRequestText(ref)` 向请求计量公开相同的同步投影。`offloadRequestImagesWithPolicy()` 按原始字节或 base64 大小以及图片数或字节步长，确定性地从最旧图片开始移除；纯函数 `offloadedImagePrefixCount()` 公开同一决策，使路由所属的请求定价无需构建投影即可复现它。对视觉 token 收费的适配器声明按路由的 `imageRequestPricing`，`ctx.llm.imageRequestPricing(provider, model)` 为 token meter 同步解析它。分发经过 `llm/stream` waterfall（瀑布式事件），随后分片以 token 级增量返回，每个适配器结果都以唯一一个终止 `finish` 分片到达消费方。
+请求会对照其精确模型的能力校验，包括上下文窗口、输出默认值、推理强度、输入模态与 `systemPromptUpdate` 模式，填入任何适配器配置的默认值，然后整个请求被深度冻结。`prepareCall()` 把这些事实、分离的上下文与重试策略绑定到执行最终分发的精确适配器代次，因此 HMR（热模块替换）或动态设置无法把一个代次的图片能力与另一代次的端点混用。支持图片的适配器把持久引用投影为路由专用请求版本；`resolveImageAttachmentAccess()` 会单独把附件提供方的可选宿主对象映射进当前工具执行世界，而不改变请求图片或其 `variantId`。纯文本路由接收确定性的逐图片占位符，包括嵌套工具结果图片，而不会改写仅追加会话历史。持久 `FileBlock` 引用永远不会到达任何适配器：请求组装把每个引用（包括嵌套工具结果中的出现）替换为确定性 句柄文本，指出文件与其只读保存路径，路径经由挂载的附件与文件系统提供方解析。`ctx.llm.fileRequestText(ref)` 向请求计量公开相同的同步投影。派生后带有 `offloaded: true` 的图片出现位置，经 `projectOffloadedImages()` 以占位文本到达每条路由。支持图片的路由在保留的出现位置按精确字节超过其 `LlmImageRequestBudget` 时，以 `IMAGE_OFFLOAD_REQUIRED` 失败并说明还需省略多少最老的出现位置（`requiredImageOffload()`），绝不发送未记录的投影；`dsh-compaction-image-offload` 用一条 `image/offload` 事件记录所选位置并重试。对视觉 token 收费的适配器声明按路由的 `imageRequestPricing`，`ctx.llm.imageRequestPricing(provider, model)` 为 token meter 同步解析它。分发经过 `llm/stream` waterfall（瀑布式事件），随后分片以 token 级增量返回，每个适配器结果都以唯一一个终止 `finish` 分片到达消费方。
 
 文件检测在每次请求时读取当前内容，包括嵌套工具结果，不缓存消息身份或冻结状态。[文件扫描决策](../../../.agents/notes/implemented/simplification/2026-09-07-file-content-scan.zh.md)记录了实测遍历成本。
 
@@ -141,7 +141,7 @@ for await (const chunk of ctx.llm.stream({
 
 #### KV Cache 影响
 
-推理强度的具体化会保留已组装请求前缀。图片身份与请求预览文本是确定性的，可选执行世界路径则按请求解析；路径变化或图片卸载边界变化可能从该图片起阻止复用。
+推理强度的具体化会保留已组装请求前缀。图片身份与请求预览文本是确定性的，可选执行世界路径则按请求解析；路径变化或一次省略决策可能从该图片起阻止复用。
 
 ## 已知限制与延期工作
 

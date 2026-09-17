@@ -53,7 +53,7 @@ it('uploads freeform feedback and message put/edit/delete through the unchanged 
       : name === '@deepseek-ai/dsh-message-feedback'
         ? { config: { maxNoteBytes: 1024 } }
         : name === '@deepseek-ai/dsh-llm-deepseek'
-          ? { config: { baseURL: server!.baseURL } }
+          ? { config: { protocol: 'chat-completions', baseURL: server!.baseURL } }
           : name === '@deepseek-ai/dsh-session-log-deepseek'
             ? { config: { enabled: true } }
             : {},

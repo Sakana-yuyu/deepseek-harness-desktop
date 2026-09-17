@@ -1,5 +1,6 @@
 /** PDF page presentation; binary content and tab information come from the document owner. */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import clsx from 'clsx'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
@@ -64,7 +65,9 @@ export function PdfBody(props: PdfBodyProps): ReactNode {
     }
   }, [data, tab.signal, attempt])
   if (data === undefined) return <p className={css.status} role="alert">{t('unsupported')}</p>
-  if (load?.data !== data) return <LoadingIndicator className={css.status} label={t('loading')} />
+  // The open wait centres like the owner's read spinner before it, so one
+  // spinner position covers everything until the first page block appears.
+  if (load?.data !== data) return <LoadingIndicator className={clsx(css.status, css.opening)} label={t('loading')} />
   if (load.kind === 'failed') {
     return <div className={css.status} role="alert">
       <span>{failureText(load.error, t)}</span>
@@ -126,9 +129,9 @@ function PdfPage({ document, page, requested: initiallyRequested, onVisible, sig
     return () => { lifetime.abort() }
   }, [document, page, requested, signal, attempt])
   return <div ref={host} className={css.page} data-pdf-page={page}>
-    {failure === undefined && state !== 'ready' && <div className={css.placeholder}>
-      {requested && <LoadingIndicator className={css.status} label={t('rendering')} />}
-    </div>}
+    {failure === undefined && state !== 'ready' && (requested
+      ? <div className={css.placeholder} role="status" aria-label={t('rendering')} />
+      : <div className={css.placeholder} />)}
     {failure !== undefined && <div className={css.status} role="alert">
       <span>{failureText(failure.error, t)}</span>
       <Button size="sm" onClick={() => { setAttempt(value => value + 1) }}>{t('retry')}</Button>

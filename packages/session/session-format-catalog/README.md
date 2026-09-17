@@ -44,7 +44,7 @@ Import `sessionFormatCatalog` from the package root. JSONL and fixture readers c
 
 Production historical reads select `{ recovery: 'recoverable', validation: 'transformed' }`. Worker and fixture verification select `{ recovery: 'strict', validation: 'current' }`. Transformed validation runs the released-current rules after migration but deliberately skips installed semantic validation for input that is already current.
 
-The catalog contains all supported historical readers directly. A profile cannot add, remove, or reorder an edge by mounting a feature plugin. Its peer dependency on `dsh-session` supplies the installed current event vocabulary and current restoration rules, while historical edge validators remain frozen.
+The catalog contains all supported historical readers directly. A profile cannot add, remove, or reorder an edge by mounting a feature plugin. Its peer dependency on `dsh-session` supplies the installed current event vocabulary and current restoration rules, while historical edge validators remain frozen. The browser-safe `./message-projections` export assembles current plugin-owned interpreters for detached constructors and surface folds; it does not mount recovery listeners.
 
 -----
 

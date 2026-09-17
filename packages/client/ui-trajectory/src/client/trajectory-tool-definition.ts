@@ -24,6 +24,7 @@ interface DispatchData {
   readonly name: string
   readonly arguments: unknown
   readonly isError?: boolean
+  readonly error?: ToolResultNode['error']
   readonly content?: ToolResultNode['content']
 }
 
@@ -101,6 +102,7 @@ function childResult(
     callTime: previous === undefined || 'kind' in previous ? null : previous.time,
     content: data.content ?? [],
     isError: data.isError === true,
+    ...(data.error === undefined ? {} : { error: data.error }),
     subCalls: [],
   }
 }
@@ -259,7 +261,7 @@ const trajectoryToolDefinition: ConversationNodeDefinition<ToolState> = {
 /* jscpd:ignore-end */
 
 /**
- * Register the Trajectory Tool lifecycle.
+ * Register the Trajectory Tool lifecycle with raw native and PTC error details.
  *
  * @param ctx - Plugin context receiving the Definition.
  */

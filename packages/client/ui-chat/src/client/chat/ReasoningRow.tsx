@@ -17,7 +17,7 @@ function latestLine(text: string): string {
 }
 
 /**
- * Render one assistant reasoning block as the Think disclosure row. The
+ * Render one assistant reasoning block collapsed until the reader opens it. The
  * collapsed summary omits double-asterisk markers; expanded content preserves
  * the complete text.
  * @param props.text - complete or streaming reasoning text.

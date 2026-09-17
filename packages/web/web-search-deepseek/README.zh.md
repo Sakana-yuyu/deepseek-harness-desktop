@@ -33,7 +33,7 @@ kind: "package-reference"
 
 ### 最小配置
 
-加载 web 服务与本提供方；密钥在已挂载 `ctx.credentials` 服务时从其解析，否则从进程环境解析。搜索端点使用 Anthropic 兼容基址（`https://api.deepseek.com/anthropic/v1`），不同于 LLM（大语言模型）适配器使用的 chat-completions 基址——绝不复用 `$DEEPSEEK_BASE_URL`。
+加载 web 服务与本提供方；密钥在已挂载 `ctx.credentials` 服务时从其解析，否则从进程环境解析。辅助搜索调用有独立的端点设置，使用 Anthropic 兼容基址 `https://api.deepseek.com/anthropic/v1`，并追加 `/messages`。它读取 `$DEEPSEEK_SEARCH_BASE_URL`，与会话适配器的 `$DEEPSEEK_BASE_URL` 和协议相互独立。
 
 ```yaml
 - name: '@deepseek-ai/dsh-web'
@@ -82,7 +82,7 @@ kind: "package-reference"
 本提供方建立在两项承诺之上：
 
 - **只取结构化块。** DeepSeek 在服务端执行搜索并返回结构化的 `web_search_tool_result` 块；提供方解析这些块，绝不从模型文本中抓取 URL。严格模式下，没有此类块的响应会抛出 `WEB_PROVIDER_ERROR`，而非降级。
-- **一个凭据，逐次解析。** 提供方复用 `DEEPSEEK_API_KEY` 引用（不新增密钥），但不复用 `$DEEPSEEK_BASE_URL`，因为搜索使用 Anthropic 兼容 Messages API。已挂载的凭据服务具有权威性；没有该服务时回退到启动进程的环境。按次解析意味着在 Web 的 Models 页中存储或轮换的密钥无需重启，即可用于下一次搜索。
+- **一个凭据，逐次解析。** 提供方复用 `DEEPSEEK_API_KEY` 引用（不新增密钥），但通过 `$DEEPSEEK_SEARCH_BASE_URL` 保持辅助请求端点独立。已挂载的凭据服务具有权威性；没有该服务时回退到启动进程的环境。按次解析意味着在 Web 的 Models 页中存储或轮换的密钥无需重启，即可用于下一次搜索。
 
 ### 源码地图
 

@@ -142,6 +142,17 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
   }
 
   /**
+   * Close every open popup for a command whose options have become stale.
+   * Pending loads and confirmations lose their binding; drafts stay intact.
+   * @param name - command name without the leading slash.
+   */
+  dismiss(name: string): void {
+    for (const popup of this.live.popups.values()) {
+      if (popup.state.getSnapshot().command === name) popup.dismiss()
+    }
+  }
+
+  /**
    * Resolve the per-session popup controller (lazy; dies with the session
    * scope). The controller's consume callback dispatches the scoped
    * consume-token event back to this session; focusComposer reaches the

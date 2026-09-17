@@ -128,10 +128,18 @@ class FakeSessions {
 class FakeWorkspaces implements IWorkspaces {
   readonly list: MutableSource<WorkspaceSnapshot>
   readonly archiveCalls: SessionId[] = []
+  readonly unarchiveCalls: SessionId[] = []
   onArchive: IWorkspaces['archiveSession'] = async (sessionId) => {
     this.list.update(state => ({
       ...state,
       archivedSessionIds: [...state.archivedSessionIds, sessionId],
+    }))
+  }
+
+  onUnarchive: IWorkspaces['unarchiveSession'] = async (sessionId) => {
+    this.list.update(state => ({
+      ...state,
+      archivedSessionIds: state.archivedSessionIds.filter(id => id !== sessionId),
     }))
   }
 
@@ -148,6 +156,11 @@ class FakeWorkspaces implements IWorkspaces {
   archiveSession(sessionId: SessionId): Promise<void> {
     this.archiveCalls.push(sessionId)
     return this.onArchive(sessionId)
+  }
+
+  unarchiveSession(sessionId: SessionId): Promise<void> {
+    this.unarchiveCalls.push(sessionId)
+    return this.onUnarchive(sessionId)
   }
 }
 
@@ -551,6 +564,18 @@ describe('UiWorkspaceService', () => {
     b.workspaces.onArchive = () => Promise.reject(new Error('archive rejected'))
     await expect(b.uiWorkspace.archiveSession(idle)).rejects.toThrow('archive rejected')
     expect(b.workspaces.archiveCalls).toEqual([idle, idle])
+  })
+
+  it('forwards unarchive commands and preserves failures', async () => {
+    const idle = sid('idle')
+    const b = bench()
+
+    await b.uiWorkspace.unarchiveSession(idle)
+    expect(b.workspaces.unarchiveCalls).toEqual([idle])
+
+    b.workspaces.onUnarchive = () => Promise.reject(new Error('unarchive rejected'))
+    await expect(b.uiWorkspace.unarchiveSession(idle)).rejects.toThrow('unarchive rejected')
+    expect(b.workspaces.unarchiveCalls).toEqual([idle, idle])
   })
 
   it('passes directory operations to the Host and preserves structured browse failures', async () => {

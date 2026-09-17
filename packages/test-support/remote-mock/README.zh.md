@@ -26,7 +26,7 @@ kind: "package-library"
 
 ### 何时使用
 
-当测试要启动与 `ctx.remote` 对话的真实客户端插件、并想按端点名脚本化 Host 侧时使用它：经 `__DSH_TRANSPORT__` 的整体 jsdom 测试，以及直接调用 `dispatch` / `open` 的单元测试。端点是 Gateway 的 wire 名（`session/page`、`settings/describe`）；`args` 是调用方的位置参数列表，末尾的 `AbortSignal` 已剥掉；值就是测试登记的东西，原样应答。唯一的声明是端点是一元（`unary`）还是流（`stream`）。
+当测试要启动与 `ctx.remote` 对话的真实客户端插件、并想按端点名脚本化 Host 侧时使用它：整体客户端测试把 `mock.rpc` 绑定到各自的 Connection 实例，单元测试也可以直接调用 `mock.remote`、`dispatch` 或 `open`。端点是 Gateway 的 wire 名（`session/page`、`settings/describe`）；`args` 是调用方的位置参数列表，末尾的 `AbortSignal` 已剥掉；值就是测试登记的东西，原样应答。唯一的声明是端点是一元（`unary`）还是流（`stream`）。
 
 <a id="remote-proxy"></a>
 ### 使用 Remote Proxy
@@ -77,7 +77,7 @@ await mock.streams.drained('session/follow')
 
 ### 接上客户端
 
-`mock.rpc` 是 `ClientConnectionRpc` 面：装成 `globalThis.__DSH_TRANSPORT__ = { rpc: mock.rpc }`，生产的 `connection` 插件就用它替代 HTTP 调用方，每次 Remote 调用直达 `dispatch`、每条流直达 `open`，中间没有信封。payload 携带 `{ args }`——整机代理发数组、Gateway 自身端点发一个对象（到达时是一个位置参数）；signal 中止的调用以中止原因 reject。`RemoteMock.create()` 登记一条流 `$events`，用 `{ type: 'ready', clientId, host: { home } }`（host 来自 `RemoteMockOptions.host`，默认 `/home/mock`）应答 Gateway 客户端的打开并保持打开——这正是整机能达到 `connected` 的原因；测试可以像任何流一样覆盖或让它失败。
+`mock.rpc` 是 `ClientConnectionRpc` 面。把它作为 `{ transport: { rpc: mock.rpc } }` 传给 Connection 安装函数，或让 `TestClient` 将其绑定到自身实例，每次 Remote 调用就会直达 `dispatch`、每条流直达 `open`，中间没有信封。payload 携带 `{ args }`——整机代理发数组、Gateway 自身端点发一个对象（到达时是一个位置参数）；signal 中止的调用以中止原因 reject。`RemoteMock.create()` 登记一条流 `$events`，用 `{ type: 'ready', clientId, host: { home } }`（host 来自 `RemoteMockOptions.host`，默认 `/home/mock`）应答 Gateway 客户端的打开并保持打开——这正是整机能达到 `connected` 的原因；测试可以像任何流一样覆盖或让它失败。
 
 ### 观察与断言
 
@@ -129,7 +129,7 @@ await mock.streams.drained('session/follow')
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **仅进程内载体**——`rpc` 经 `__DSH_TRANSPORT__.rpc` 服务同一 realm 的客户端；不提供给浏览器车道测试用的 HTTP 或 WebSocket 载体。
+- **仅进程内载体**——`rpc` 服务同一 realm 中的 Connection 实例；不提供给浏览器车道测试用的 HTTP 或 WebSocket 载体。
 - **值按引用传递**——应答与流项都未经序列化就到达客户端，真实线路会拒绝的非 JSON 值在这里原样通过。
 - **不校验值**——一元应答必须是调用方读取的结果（`{ ok, value }` 或 `{ ok: false, error }`）；mock 原样传递它，不检查这些字段。
 - **不做 payload 匹配**——规则只按端点匹配；在 handler 内按业务参数判别。

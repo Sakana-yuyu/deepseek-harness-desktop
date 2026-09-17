@@ -99,7 +99,7 @@ describe('PDF body', () => {
   it('shows loading, omits the paging toolbar, and renders a continuous page sequence', async () => {
     const h = harness()
     const view = render(<h.View />)
-    expect(screen.getByRole('status').textContent).toBe('Opening PDF…')
+    expect(screen.getByRole('status').getAttribute('aria-label')).toBe('Reading…')
     expect(screen.getByRole('status').hasAttribute('data-document-loading')).toBe(true)
     await act(async () => { loads[0]!.deferred.resolve(documentOf()) })
     await act(async () => {})

@@ -439,7 +439,7 @@ describe('contextPressure session projection', () => {
     const checkpoint = JSON.parse(JSON.stringify(
       ctx.sessionProjections.checkpoint(session),
     )) as ReturnType<typeof ctx.sessionProjections.checkpoint>
-    expect(checkpoint.contextPressure?.ver).toBe(4)
+    expect(checkpoint.contextPressure?.ver).toBe(5)
 
     await meterFiber.dispose()
     expect(ctx.sessionProjections.snapshot(session).values).not.toHaveProperty('contextPressure')

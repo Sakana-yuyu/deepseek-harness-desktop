@@ -27,6 +27,8 @@
 
 未发布 N+1 的集成测试应使用可丢弃、相互隔离的 Harness home。中间版本产生的 N+1 文件已标为目标写入器版本，因此后续对 N→N+1 的修改不会再次迁移该文件。请在全新测试 home 中从未变更的历史输入重新运行；绝不通过改写已提交代际或复用真实用户 home 来修复这个问题。
 
+变更写入器之前，使用[归档命令](../persistence-changes/historical-formats/README.zh.md#maintenance)保留其完整持久化 schema，再在 `docs/persistence-changes/historical-formats/vN.*` 下添加双语格式参考。保留所有更早的记录。格式覆盖检查要求低于新写入器的每个整数版本都有独立文档；当前生成的目录只覆盖新写入器。
+
 <a id="add-an-identity-edge"></a>
 ## 2. 添加恒等迁移边
 

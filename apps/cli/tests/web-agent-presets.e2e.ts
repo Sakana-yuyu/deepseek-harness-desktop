@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { boot, healProfilesModuleFallback, loadOverlayPatches, loadProfile } from '@deepseek-ai/dsh-app-boot'
+import {
+  boot,
+  createProfileResolutionGeneration,
+  loadOverlayPatches,
+  loadProfile,
+  PluginPackages,
+  type Profile,
+} from '@deepseek-ai/dsh-app-boot'
 import { provideCmdline } from '@deepseek-ai/dsh-cmdline'
 import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -112,12 +119,7 @@ async function bootWeb(
     { id: 'agent-presets', config: { default: 'standard', includeUserRoot: false } },
     ...extra,
   ]
-  // The surface is patch layers over an empty preset root, so the root sits
-  // outside this workspace and bare plugin names cannot resolve by Node's
-  // upward walk. The flat fallback the preset boot maintains is what makes
-  // them resolvable — the same mechanism, not a test-only shim.
   const home = dirname(settingsFile)
-  await healProfilesModuleFallback({ installAnchor: INSTALL_ANCHOR, home })
   const profileDir = join(home, 'profiles', 'spec')
   await mkdir(profileDir, { recursive: true })
   // Product Bundles are installed into the Profile, not the dsh app. Model
@@ -130,6 +132,14 @@ async function bootWeb(
     await mkdir(dirname(link), { recursive: true })
     await symlink(packageDir, link, 'junction')
   }
+  let profile: Profile = {
+    name: 'spec',
+    dir: profileDir,
+    layers: [],
+    patchPath: join(profileDir, 'cordis.patch.yml'),
+    patches: [],
+    patchReload: 'startup',
+  }
   let bundlePatches: PatchOptions[] = [
     ...loadOverlayPatches('dsh-test', BASE_PATCH),
     ...loadOverlayPatches('dsh-test', WEB_PATCH),
@@ -140,12 +150,14 @@ async function bootWeb(
       dependencies: Object.fromEntries(profileBundles.map(name => [name, 'workspace:*'])),
       dsh: { profile: { bundles: profileBundles } },
     }, null, 2) + '\n')
-    const profile = loadProfile('dsh-test', 'spec', INSTALL_ANCHOR, home, { userLayer: false })
+    profile = loadProfile('dsh-test', 'spec', INSTALL_ANCHOR, home, { userLayer: false })
     bundlePatches = profile.layers.flatMap(layer => layer.patches)
   }
+  const resolution = await createProfileResolutionGeneration({ installAnchor: INSTALL_ANCHOR, home, profile })
   const rootConfig = join(profileDir, 'cordis.yml')
   await writeFile(rootConfig, '[]\n')
-  return await boot('dsh-test', rootConfig, [...bundlePatches, ...overrides], (bootCtx) => {
+  return await boot('dsh-test', rootConfig, [...bundlePatches, ...overrides], async (bootCtx) => {
+    await bootCtx.plugin(PluginPackages, { generation: resolution })
     bootCtx.provide('connection', {
       fetch: { register: () => () => {} },
       rpc: { intercept: () => () => {} },
@@ -242,7 +254,7 @@ describe('the shipped Web composition', () => {
       // depend on ripgrep being present on the machine.
       expect(toolNames(ctx, handle.agent).filter(name => name !== 'glob' && name !== 'grep')).toEqual([
         'ask_user_question', 'bash', 'create_goal', 'edit', 'exit_plan_mode',
-        'get_goal', 'interrupt_agent', 'job_kill', 'job_list', 'job_output', 'list_agents', 'present', 'ralph', 'read', 'read_image', 'send_message', 'skill',
+        'get_goal', 'interrupt_agent', 'job_kill', 'job_list', 'job_output', 'list_agents', 'present', 'read', 'read_image', 'send_message', 'skill',
         'subagent', 'subagent_fork', 'todo_write', 'update_goal', 'web_fetch', 'web_search',
         'workflow', 'write',
       ])

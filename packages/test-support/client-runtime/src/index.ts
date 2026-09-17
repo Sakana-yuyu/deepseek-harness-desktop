@@ -113,8 +113,6 @@ export interface FeatureHandle {
 
 /** Mutable fail-loud file-upload stub installed by {@link SlotTestRuntime}. */
 export interface TestFileUpload {
-  /** Availability reported to the feature under test. */
-  available: boolean
   /** Test-supplied upload behavior; the default rejects every call. */
   upload: (sessionId: SessionId, ...args: unknown[]) => Promise<unknown>
 }
@@ -245,7 +243,6 @@ export class SlotTestRuntime {
     this.sessions = new TestSessions(this.stabilizer, ctx)
     this.workspaces = new TestWorkspaces(this.stabilizer)
     this.fileUpload = {
-      available: false,
       upload: () => Promise.reject(new Error('client test runtime: file upload is not stubbed')),
     }
     ctx.provide('sessions', this.sessions)

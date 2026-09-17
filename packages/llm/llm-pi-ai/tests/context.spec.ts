@@ -3,7 +3,7 @@ import { AttachmentId, ImageVariantId } from '@deepseek-ai/dsh-attachment'
 import type {
   AttachmentStore,
   ImageAttachmentRef,
-  ImageRequestPolicy,
+  ImageRequestTarget,
   RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import { ToolCallId, createMessage, createUserMessage, offloadedImageText } from '@deepseek-ai/dsh-llm'
@@ -38,7 +38,7 @@ function requestImage(value: ImageAttachmentRef, data: Uint8Array): RequestImage
 function projectionStore(
   readImageRequest: (
     value: ImageAttachmentRef,
-    policy: ImageRequestPolicy,
+    target: ImageRequestTarget,
     signal?: AbortSignal,
   ) => Promise<RequestImageAttachment> = vi.fn((value: ImageAttachmentRef) => (
     Promise.resolve(requestImage(value, Uint8Array.of(1)))
@@ -257,20 +257,20 @@ describe('pi-ai request context conversion', () => {
     })
   })
 
-  it('replaces the oldest images with placeholders once the request payload bound is exceeded', async () => {
+  it('projects surface-offloaded occurrences to placeholders and prepares only retained ones', async () => {
     const readImageRequest = vi.fn((value: ImageAttachmentRef) => (
       Promise.resolve(requestImage(value, Uint8Array.of(1, 2, 3)))
     ))
     const store = projectionStore(readImageRequest)
     const sized: ImageAttachmentRef = { ...ref, bytes: 3 }
     const callId = ToolCallId('shot-call')
-    // Three 3-byte images cost 4 base64 characters each (12 total); a bound of
-    // 8 forces exactly the oldest one out, including one nested in a tool result.
+    // The nested occurrence is offloaded on the surface; the two retained 3-byte images cost
+    // 4 base64 characters each and fit the 8-byte bound exactly.
     const context = await toPiContext(request([
       user([{
         type: 'tool-result',
         toolCallId: callId,
-        content: [{ type: 'image', attachment: sized }],
+        content: [{ type: 'image', attachment: sized, offloaded: true }],
       }]),
       user([{ type: 'image', attachment: sized }, { type: 'text', text: 'newer' }]),
       user([{ type: 'image', attachment: sized }]),
@@ -305,8 +305,7 @@ describe('pi-ai request context conversion', () => {
     ])
     expect(readImageRequest).toHaveBeenCalledTimes(1)
   })
-
-  it('does not prepare an old image removed by the conservative request projection', async () => {
+  it('does not prepare a surface-offloaded image', async () => {
     const old = { ...ref, attachmentId: AttachmentId(`sha256:${'c'.repeat(64)}`), bytes: 3 }
     const recent = { ...ref, attachmentId: AttachmentId(`sha256:${'d'.repeat(64)}`), bytes: 3 }
     const readImageRequest = vi.fn((value: ImageAttachmentRef) => {
@@ -315,7 +314,7 @@ describe('pi-ai request context conversion', () => {
     })
 
     const context = await toPiContext(request([user([
-      { type: 'image', attachment: old },
+      { type: 'image', attachment: old, offloaded: true },
       { type: 'image', attachment: recent },
     ])]), imageContext(projectionStore(readImageRequest), { maxRequestImageBytes: 4 }))
 
@@ -330,16 +329,26 @@ describe('pi-ai request context conversion', () => {
     expect(readImageRequest).toHaveBeenCalledTimes(1)
     expect(readImageRequest.mock.calls[0]?.[0]).toEqual(recent)
   })
-
-  it('uses independently resolved access when exact encoded bytes require offload', async () => {
+  it('fails with the count to offload when exact encoded bytes exceed the bound', async () => {
     const sized: ImageAttachmentRef = { ...ref, bytes: 3 }
-    const access = { readonlyPath: '/tmp/dsh-normalized-image' }
     const readImageRequest = vi.fn((value: ImageAttachmentRef) => Promise.resolve({
       ...requestImage(value, Uint8Array.of(1, 2, 3, 4)),
     }))
 
-    const context = await toPiContext(request([
+    await expect(toPiContext(request([
       user([{ type: 'image', attachment: sized }]),
+    ]), imageContext(projectionStore(readImageRequest), { maxRequestImageBytes: 4 })))
+      .rejects.toMatchObject({ code: 'IMAGE_OFFLOAD_REQUIRED', failure: { offloadImages: 1 } })
+    expect(readImageRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders an offloaded occurrence with independently resolved access', async () => {
+    const sized: ImageAttachmentRef = { ...ref, bytes: 3 }
+    const access = { readonlyPath: '/tmp/dsh-normalized-image' }
+    const readImageRequest = vi.fn()
+
+    const context = await toPiContext(request([
+      user([{ type: 'image', attachment: sized, offloaded: true }]),
     ]), imageContext(projectionStore(readImageRequest), {
       maxRequestImageBytes: 4,
       resolveImageAccess: () => access,
@@ -350,10 +359,9 @@ describe('pi-ai request context conversion', () => {
       content: offloadedImageText(sized, access),
       timestamp: 0,
     }])
-    expect(readImageRequest).toHaveBeenCalledTimes(1)
+    expect(readImageRequest).not.toHaveBeenCalled()
   })
-
-  it('keeps every image at exactly the payload bound and drops all of them when even the newest cannot fit', async () => {
+  it('keeps every image at exactly the payload bound and rejects a single image that cannot fit', async () => {
     const sized: ImageAttachmentRef = { ...ref, bytes: 3 }
     const exact = await toPiContext(request([
       user([{ type: 'image', attachment: sized }]),
@@ -376,17 +384,12 @@ describe('pi-ai request context conversion', () => {
       Promise.resolve(requestImage(value, new Uint8Array(300)))
     ))
     const store = projectionStore(readImageRequest)
-    const oversized = await toPiContext(request([
+    await expect(toPiContext(request([
       user([{ type: 'image', attachment: { ...ref, bytes: 300 } }]),
-    ]), imageContext(store, { maxRequestImageBytes: 8 }))
-    // All-text content collapses to the string form; the placeholder still reaches the model.
-    expect(oversized.messages).toEqual([
-      { role: 'user', content: offloadedImageText({ ...ref, bytes: 300 }), timestamp: 0 },
-    ])
-    expect(readImageRequest).not.toHaveBeenCalled()
+    ]), imageContext(store, { maxRequestImageBytes: 8 })))
+      .rejects.toMatchObject({ code: 'IMAGE_OFFLOAD_REQUIRED', failure: { offloadImages: 1 } })
   })
-
-  it('offloads repeated image-block occurrences by position rather than shared object identity', async () => {
+  it('projects repeated image-block occurrences by their own surface mark', async () => {
     const sized: ImageAttachmentRef = { ...ref, bytes: 3 }
     const shared: ContentBlock = { type: 'image', attachment: sized }
     const readImageRequest = vi.fn((value: ImageAttachmentRef) => (
@@ -394,11 +397,11 @@ describe('pi-ai request context conversion', () => {
     ))
     const store = projectionStore(readImageRequest)
     const aliased = await toPiContext(
-      request([user([shared, shared])]),
+      request([user([{ ...shared, offloaded: true }, shared])]),
       imageContext(store, { maxRequestImageBytes: 4 }),
     )
     const replayed = await toPiContext(request([user([
-      { type: 'image', attachment: { ...sized } },
+      { type: 'image', attachment: { ...sized }, offloaded: true },
       { type: 'image', attachment: { ...sized } },
     ])]), imageContext(store, { maxRequestImageBytes: 4 }))
 
@@ -415,7 +418,6 @@ describe('pi-ai request context conversion', () => {
     expect(replayed.messages).toEqual(expected)
     expect(readImageRequest).toHaveBeenCalledTimes(2)
   })
-
   it('keeps empty text-only users while separating result-only messages', () => {
     const callId = ToolCallId('unknown-call')
     expect(toPiContext(request([

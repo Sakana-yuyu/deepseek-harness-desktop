@@ -20,6 +20,7 @@ import type {
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
   WorkspaceRenameRequest,
+  WorkspaceUnarchiveSessionRequest,
   WorkspaceValue,
   WorkspaceView,
 } from '../../src/types.ts'
@@ -96,5 +97,6 @@ export const workspaceWorld: RemoteTable = {
       workspace: workspace(String(request.workspaceId), { sessionIds: [request.sessionId] }),
     }),
     'workspace/archiveSession': (request: WorkspaceArchiveSessionRequest): RemoteResult<WorkspaceArchiveValue> => ok({ archivedSessionIds: [request.sessionId] }),
+    'workspace/unarchiveSession': (_request: WorkspaceUnarchiveSessionRequest): RemoteResult<WorkspaceArchiveValue> => ok({ archivedSessionIds: [] }),
   },
 }

@@ -3,7 +3,7 @@ import {
   type NormalizeContext,
   extractSnapshotSpillPaths,
   normalizeSessionLog,
-  normalizeSessionFormatProvenance,
+  normalizeSessionFormatMetadata,
   normalizeSessionSnapshot,
   normalizeSessionSnapshots,
   normalizeStdout,
@@ -758,8 +758,8 @@ describe('normalizeSessionSnapshot', () => {
       type: 'session-log-deepseek/delivery-accepted',
       data: { sessionId: 's', throughSeq: 4, sessionFormatVersion: version },
     })
-    expect(normalizeSessionFormatProvenance(event(0))).toBe(event(0))
-    expect(normalizeSessionFormatProvenance(event(3))).not.toBe(normalizeSessionFormatProvenance(event(0)))
+    expect(normalizeSessionFormatMetadata(event(0))).toBe(event(0))
+    expect(normalizeSessionFormatMetadata(event(3))).not.toBe(normalizeSessionFormatMetadata(event(0)))
   })
 
   it('preserves opaque generation qualifiers and their lookalikes', () => {
@@ -841,7 +841,7 @@ describe('normalizeSessionSnapshot', () => {
       type: 'user/message',
       data: { source: { kind: 'session-reference', form: 'recall', version: 1, references: {} } },
     })
-    expect(normalizeSessionFormatProvenance(raw)).toBe(raw)
+    expect(normalizeSessionFormatMetadata(raw)).toBe(raw)
   })
 
   it('keeps session-reference lookalikes outside Message source positions unchanged', () => {
@@ -862,12 +862,12 @@ describe('normalizeSessionSnapshot', () => {
       '',
     ].join('\n')
 
-    const normalized = normalizeSessionFormatProvenance(lookalike).split('\n')
+    const normalized = normalizeSessionFormatMetadata(lookalike).split('\n')
     expect(JSON.parse(normalized[0] as string)).not.toHaveProperty('version')
     expect(normalized[1]).toBe(lookalike.split('\n')[1])
   })
 
-  it('projects persisted provenance ranges back to logical seq arrays', () => {
+  it('projects persisted source-event ranges back to logical seq arrays', () => {
     const raw = [
       JSON.stringify({ type: 'session', version: 0 }),
       JSON.stringify({

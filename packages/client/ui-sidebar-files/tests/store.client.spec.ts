@@ -33,7 +33,7 @@ describe('createFilesStore', () => {
     const { actions } = store
     const getSnapshot = (): ReturnType<typeof store.getSnapshot> => store.getSnapshot()
     actions.start(TAB, ROOT)
-    expect(getSnapshot().byTab[TAB]).toEqual({ root: ROOT, levels: {}, expanded: [ROOT] })
+    expect(getSnapshot().byTab[TAB]).toEqual({ root: ROOT, levels: {}, expanded: [ROOT], scrollTop: 0 })
   })
 
   it('walks one level through loading, ready, and failed', () => {
@@ -75,7 +75,15 @@ describe('createFilesStore', () => {
     actions.toggled(TAB, child)
     actions.loaded(TAB, child, LEVEL)
     actions.reset(TAB)
-    expect(getSnapshot().byTab[TAB]).toEqual({ root: ROOT, levels: {}, expanded: [ROOT, child] })
+    expect(getSnapshot().byTab[TAB]).toEqual({ root: ROOT, levels: {}, expanded: [ROOT, child], scrollTop: 0 })
+  })
+
+  it('remembers where the body is scrolled to', () => {
+    const store = createFilesStore().create()
+    const { actions } = store
+    actions.start(TAB, ROOT)
+    actions.scrolled(TAB, 120)
+    expect(store.getSnapshot().byTab[TAB]!.scrollTop).toBe(120)
   })
 
   it('refuses to write a level for a tab that was never started', () => {

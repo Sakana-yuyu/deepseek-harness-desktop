@@ -4,11 +4,16 @@ export interface DesktopElectronBuilderConfig {
   readonly directories: {
     readonly output: string
   }
-  readonly extraResources: readonly [
-    { readonly from: string, readonly to: 'runtime' },
-    { readonly from: string, readonly to: 'dsh' },
-    { readonly from: string, readonly to: 'dsh/node_modules' },
+  readonly files: readonly [
+    string,
+    string,
+    string,
+    string,
+    { readonly from: string, readonly to: 'dsh', readonly filter: readonly ['**/*'] },
+    { readonly from: string, readonly to: 'dsh/node_modules', readonly filter: readonly ['**/*'] },
   ]
+  readonly asarUnpack: readonly string[]
+  readonly extraResources: readonly [{ readonly from: string, readonly to: 'runtime' }]
   readonly mac: {
     readonly identity: string | undefined
     readonly forceCodeSigning: boolean

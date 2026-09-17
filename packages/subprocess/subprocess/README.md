@@ -60,6 +60,11 @@ const output = handle.collected.stdout?.readFrom(0)
 
 Reads are offset-based and non-consuming: a background reader and a final batch read can share one stream without stealing each other's bytes.
 
+<a id="using-a-control-pipe"></a>
+### Using a control pipe
+
+Set `stdio.control: 'pipe'` to receive a separate raw `Duplex` in `handle.control`. The Node child opens fd 7 with `openInheritedControlChannel()` from `@deepseek-ai/dsh-subprocess/control`; this helper consumes the provider-owned `DSH_SUBPROCESS_CONTROL=pipe` marker. Callers cannot supply that marker through `env`. Control bytes never enter stdout/stderr collectors. The consumer owns framing, validation, backpressure, and closing its endpoint; provider disposal destroys any endpoint remaining after process teardown. Omitting the request returns `control: undefined`. This channel is available only for ordinary processes, and carries no authority to bypass tool approval.
+
 ### Managing process lifetime
 
 Termination and waiting use one provider-managed range. `terminate()` starts the provider's documented procedure, is idempotent, and becomes a no-op after that range is empty; the request's abort signal starts the same procedure. `waitForExit()` observes the same range and resolves only after the provider proves it quiescent, so direct command completion does not hide a surviving descendant. It rejects when the selected owner can no longer prove quiescence. Providers document their native owners and weaker fallbacks; callers own deadlines, teardown ladders, and cause classification.
@@ -117,11 +122,12 @@ Read these pages when the package-level contract is not enough. They move from t
 
 - [Subprocess subsystem](../../../docs/subsystems/subprocess.md) — spawn specs, output readers, outcomes, and the `DSH_*` environment in full.
 - [dsh-subprocess-local](../subprocess-local/README.md) — the local host provider that implements this contract.
-- [dsh-subprocess-e2b](../../e2b/subprocess-e2b/README.md) — the remote E2B provider for the same seam.
 - [dsh-bash-local](../../shell/bash-local/README.md) — the largest consumer: bash commands over this service.
 - [Subprocess seam Agent Note](../../../.agents/notes/archived/architecture/2026-07-26-subprocess-seam.md) — why the process half became its own seam and what moved with it.
 
 -----
+
+Terminal consumers use `terminalEnvironment()` to read the provider platform and preferred shell, and `resolveExecutable()` to verify candidates. A completed lookup miss throws `SubprocessExecutableNotFoundError`; transport failures remain distinct. `spawnTerminal` requires `terminalType` and initial dimensions, and its handle supports `resize(cols, rows)` without reallocating the process.
 
 <a id="model-experience"></a>
 ## Model Experience

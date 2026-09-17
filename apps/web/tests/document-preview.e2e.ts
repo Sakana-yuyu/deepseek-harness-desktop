@@ -80,7 +80,7 @@ describe.skipIf(MODE === 'record')('web e2e: document preview through Files', ()
     }
   })
 
-  it('opens text, isolated HTML, intrinsic images, and rendered PDF from the Session workspace', async () => {
+  it('opens text, isolated HTML, width-fitted images, and rendered PDF from the Session workspace', async () => {
     onTestFailed(async () => {
       await mkdir(SHOT_DIR, { recursive: true })
       await saveFailureShot(page, `screenshots/0908-document-preview/smoke-${process.pid}`)
@@ -130,10 +130,12 @@ describe.skipIf(MODE === 'record')('web e2e: document preview through Files', ()
         '</svg>',
       ].join('')),
       writeFile(join(cwd, 'smoke.pdf'), pdfFixture()),
+      writeFile(join(cwd, 'clip.mp4'), Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70])),
     ])
 
     const column = page.locator('[data-rightbar-col]')
     await page.locator('[data-sidebar-right-expand]').click()
+    await column.locator('[data-sidebar-right-guide-entry="files"]').click()
     await column.locator('[data-files-state="tree"]').waitFor({ state: 'visible' })
     await column.locator('[data-files-reload]').click()
     const filesTab = column.locator('[data-dockkit-tab]').filter({ has: page.getByText('Files', { exact: true }) })
@@ -174,6 +176,7 @@ describe.skipIf(MODE === 'record')('web e2e: document preview through Files', ()
       await column.locator('[data-files-entry="file"]').getByRole('button', { name, exact: true }).click()
       await expect.poll(async () => (await preview.getAttribute('data-textpreview-url'))?.endsWith(`/${name}`)).toBe(true)
     }
+    // Binary suffixes (bitmaps, PDF) drop the plain-text fallback; a single remaining viewer renders no control.
     const viewer = preview.locator('[data-document-viewer-menu]')
     const body = preview.locator('[data-textpreview-body]')
     const sections = ['# Document preview']
@@ -275,9 +278,9 @@ describe.skipIf(MODE === 'record')('web e2e: document preview through Files', ()
     ].join('\n'))
 
     await openFile('smoke.pdf')
-    await expect.poll(() => viewer.innerText()).toBe('PDF')
     const canvas = preview.getByRole('img', { name: 'PDF page 1', exact: true })
     await canvas.waitFor({ state: 'visible', timeout: 30_000 })
+    expect(await viewer.count()).toBe(0)
     expect(await preview.locator('[role="toolbar"]').count()).toBe(0)
     expect(await preview.locator('[data-pdf-page]').count()).toBe(2)
     await expect.poll(() => canvasColor(canvas), { timeout: 30_000 }).toBe('red')
@@ -307,7 +310,7 @@ describe.skipIf(MODE === 'record')('web e2e: document preview through Files', ()
     await successShot(page, 'pdf')
     sections.push([
       '## PDF', '',
-      `- Viewer: ${await viewer.innerText()}`,
+      `- Viewer menu hidden: ${String(await viewer.count() === 0)}`,
       `- Worker: ${workerNames.find(name => name === 'dsh-pdf')}`,
       `- Continuous pages: ${await preview.locator('[data-pdf-page]').count()}`,
       `- Horizontal overflow: ${String(await body.evaluate(node => node.scrollWidth > node.clientWidth))}`,
@@ -316,9 +319,9 @@ describe.skipIf(MODE === 'record')('web e2e: document preview through Files', ()
     ].join('\n'))
 
     await openFile('tiny.png')
-    await expect.poll(() => viewer.innerText()).toBe('Image')
     const tinyImage = preview.getByRole('img', { name: 'Image preview: tiny.png', exact: true })
     await tinyImage.waitFor({ state: 'visible', timeout: 15_000 })
+    expect(await viewer.count()).toBe(0)
     expect(await tinyImage.evaluate(node => ({
       width: (node as HTMLImageElement).naturalWidth,
       height: (node as HTMLImageElement).naturalHeight,
@@ -338,25 +341,35 @@ describe.skipIf(MODE === 'record')('web e2e: document preview through Files', ()
 
     await openFile('large.svg')
     await expect.poll(() => viewer.innerText()).toBe('Image')
+    await viewer.click()
+    await page.getByRole('menuitem', { name: 'Plain text', exact: true }).waitFor({ timeout: 15_000 })
+    await page.keyboard.press('Escape')
     const largeImage = preview.getByRole('img', { name: 'Image preview: large.svg', exact: true })
     await largeImage.waitFor({ state: 'visible', timeout: 15_000 })
-    expect(await largeImage.evaluate(node => ({
-      naturalWidth: (node as HTMLImageElement).naturalWidth,
-      naturalHeight: (node as HTMLImageElement).naturalHeight,
-      width: getComputedStyle(node).width,
-      height: getComputedStyle(node).height,
-    }))).toEqual({ naturalWidth: 1200, naturalHeight: 1600, width: '1200px', height: '1600px' })
-    expect(await body.evaluate(node => ({
-      horizontal: node.scrollWidth > node.clientWidth,
-      vertical: node.scrollHeight > node.clientHeight,
-    }))).toEqual({ horizontal: true, vertical: true })
+    const fitted = await largeImage.evaluate((node) => {
+      const image = node as HTMLImageElement
+      const scroller = image.closest('[data-textpreview-body]')
+      if (scroller === null) throw new Error('image document scroller is unavailable')
+      const rect = image.getBoundingClientRect()
+      return {
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        width: rect.width,
+        height: rect.height,
+        paneWidth: scroller.clientWidth,
+        paneHeight: scroller.clientHeight,
+      }
+    })
+    expect(fitted).toMatchObject({ naturalWidth: 1200, naturalHeight: 1600 })
+    expect(fitted.width).toBeLessThan(1200)
+    // Width fit: the image fills the frame's 12px-inset box while the aspect ratio holds.
+    expect(Math.abs((fitted.paneWidth - 24) - fitted.width)).toBeLessThanOrEqual(1)
+    expect(fitted.height / fitted.width).toBeCloseTo(1600 / 1200, 2)
     const scrolled = await body.evaluate((node) => {
       node.scrollLeft = node.scrollWidth
-      node.scrollTop = node.scrollHeight
-      return { left: node.scrollLeft, top: node.scrollTop }
+      return { left: node.scrollLeft, horizontalOverflow: node.scrollWidth > node.clientWidth }
     })
-    expect(scrolled.left).toBeGreaterThan(0)
-    expect(scrolled.top).toBeGreaterThan(0)
+    expect(scrolled).toEqual({ left: 0, horizontalOverflow: false })
     expect(await page.locator('html').getAttribute('data-image-preview-escape')).toBeNull()
 
     const releaseRead = Promise.withResolvers<undefined>()
@@ -449,12 +462,25 @@ describe.skipIf(MODE === 'record')('web e2e: document preview through Files', ()
     ].join('\n'))
 
     await openFile('notes.unknown')
-    await expect.poll(() => viewer.innerText()).toBe('Plain text')
     const plainLines = preview.locator('[data-textpreview-line]')
     await expect.poll(() => plainLines.count()).toBe(2)
+    // Plain text is the only candidate, so no viewer menu renders.
+    expect(await viewer.count()).toBe(0)
     const fallback = (await plainLines.allTextContents()).map(line => line.trim())
     expect(fallback).toEqual(['UNKNOWN_SUFFIX', 'Plain fallback.'])
-    sections.push(['## Unknown suffix', '', `- Viewer: ${await viewer.innerText()}`, `- Text: ${fallback.join(' | ')}`].join('\n'))
+    sections.push(['## Unknown suffix', '', `- Viewer menu hidden: ${String(await viewer.count() === 0)}`, `- Text: ${fallback.join(' | ')}`].join('\n'))
+
+    await filesTab.click()
+    await column.locator('[data-files-entry="file"]').getByRole('button', { name: 'clip.mp4', exact: true }).click()
+    const unsupported = column.locator('[data-textpreview-state="unsupported"]')
+    await unsupported.waitFor({ timeout: 15_000 })
+    const unsupportedLine = await unsupported.locator('[data-textpreview-unsupported]').innerText()
+    expect(unsupportedLine).toContain('Preview is not available for this file type yet.')
+    expect(await unsupported.locator('[data-textpreview-path]').innerText()).toContain('clip.mp4')
+    expect(await unsupported.locator('[data-document-viewer-menu]').count()).toBe(0)
+    expect(await unsupported.locator('[data-textpreview-tool="reload"]').count()).toBe(0)
+    await successShot(page, 'unsupported')
+    sections.push(['## Unviewable binary', '', '- State: unsupported', `- Line: ${unsupportedLine.trim()}`].join('\n'))
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
     await compareOrRefreshGolden(EXPECTED, sections.join('\n\n'), MODE)

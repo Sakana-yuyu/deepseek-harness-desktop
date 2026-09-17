@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use `dsh-fs` when an application needs consistent filesystem operations across host, confined, or remote execution environments. It lets consumers resolve stable file identities, map shared host files where supported, perform bounded text and byte reads, list directories, and apply atomic text writes and literal edits. Version guards are optional, so a backend works without policy enforcement; callers can supply a guard to reject a mutation after the file changes. Choose `fs-local`, `fs-sandbox`, or `fs-e2b` for the required execution environment. Model-facing filesystem tools are provided separately by `dsh-tool-fs`.
+Use `dsh-fs` when an application needs consistent filesystem operations across host, confined, or remote execution environments. It lets consumers resolve stable file identities, map shared host files where supported, perform bounded text and byte reads, list directories, and apply atomic text writes and literal edits. Version guards are optional, so a backend works without policy enforcement; callers can supply a guard to reject a mutation after the file changes. Choose `fs-local` or `fs-sandbox` for host execution. Model-facing filesystem tools are provided separately by `dsh-tool-fs`.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ You rarely load `dsh-fs` directly: you mount a backend that registers as `ctx.fs
 
 ### Choosing and mounting a backend
 
-Pick [`fs-local`](../fs-local/README.md) for ordinary host files, [`fs-sandbox`](../fs-sandbox/README.md) when a session's mutations must be confined to its workspace and temp roots, and [`fs-e2b`](../../e2b/fs-e2b/README.md) when file state must live in a remote execution world. Mounting any backend populates `ctx.fs`; swapping backends changes nothing for the policy plugin, the tools, or the tool schemas. A composition that mounts no backend has no `ctx.fs` at all, and the tools fail at registration.
+Pick [`fs-local`](../fs-local/README.md) for ordinary host files or [`fs-sandbox`](../fs-sandbox/README.md) when a session's mutations must be confined to its workspace and temp roots. Mounting any backend populates `ctx.fs`; swapping backends changes nothing for the policy plugin, the tools, or the tool schemas. A composition that mounts no backend has no `ctx.fs` at all, and the tools fail at registration.
 
 ### What the service lets you do
 

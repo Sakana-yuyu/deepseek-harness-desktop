@@ -24,6 +24,7 @@ import { expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './supp
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/navigation-panes', import.meta.url))
 const SEED = join(SNAPSHOT_DIR, 'session.v3.jsonl')
 const TRAJECTORY_EXPECTED = join(SNAPSHOT_DIR, 'trajectory.expected.md')
+const TIMING_EXPECTED = join(SNAPSHOT_DIR, 'timing.expected.md')
 const SEARCH_EXPECTED = join(SNAPSHOT_DIR, 'search-results.expected.md')
 const TERMINAL_EXPECTED = join(SNAPSHOT_DIR, 'terminal-card.expected.md')
 const MODE = webSnapshotMode()
@@ -97,7 +98,8 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
       const raw = await readFile(SEED, 'utf8')
       expect(fixtureUserPrompts(raw), 'seed fixture must carry exactly the two drive prompts')
         .toEqual([PROMPT_TURN1, PROMPT_TURN2])
-      await seedSession(scaffold, raw, SEED_ID)
+      // The inspector's calendar date must not depend on the day the test runs.
+      await seedSession(scaffold, raw, SEED_ID, undefined, { createdAt: Date.UTC(2026, 0, 1) })
     }
     browser = await chromium.launch()
   }, 120_000)
@@ -264,11 +266,28 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
     await page.evaluate(() => { document.body.removeAttribute('data-ds-dark-theme') })
     await page.getByRole('tab', { name: 'Result' }).click()
     await expect.poll(() => page.getByText('NAVIGATION_OK', { exact: false }).count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(1)
-    expect(await page.locator('[data-timeline-span="message"][data-assistant-timing="true"]').count()).toBe(0)
+    expect(await page.locator('[data-timeline-span="message"][data-assistant-timing="true"]').count()).toBeGreaterThan(0)
     const snapshot = (await captureStableAria(page, '[class*="viewArea"]', scaffold.workspaceCwd))
       .split(SEED_ID).join('{{seededId}}')
     await compareOrRefreshGolden(TRAJECTORY_EXPECTED, snapshot, MODE)
     await details.getByRole('button', { name: 'Close details' }).click()
+  }, 60_000)
+
+  it.skipIf(MODE === 'record')('restores Assistant timing from recorded history', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-navigation-timing'))
+    await ensureSeedOpen(page)
+    await page.getByRole('tab', { name: 'Trajectory' }).click()
+    await page.getByRole('button', { name: 'Request #1', exact: true }).click()
+    const details = page.getByRole('complementary', { name: 'Event details' })
+    await details.getByRole('tab', { name: 'Timing', exact: true }).click()
+    const panel = details.getByRole('tabpanel', { name: 'Timing' })
+    for (const metric of ['TTFT', 'Generation', 'Throughput']) {
+      const value = panel.getByText(metric, { exact: true }).locator('..').locator('dd')
+      await expect.poll(() => value.textContent()).toMatch(/^\d/)
+    }
+    expect(await panel.getByText('First token unavailable', { exact: true }).count()).toBe(0)
+    const snapshot = await captureStableAria(page, '#trajectory-detail-panel', scaffold.workspaceCwd)
+    await compareOrRefreshGolden(TIMING_EXPECTED, snapshot, MODE)
   }, 60_000)
 
   it.skipIf(MODE === 'record')('downloads through the Session Header and /export with one dialog', async () => {
@@ -504,7 +523,7 @@ describe('web e2e: navigation & panes over a rich seeded session', () => {
   it.skipIf(MODE === 'record')('keeps the recorded fixture inventory exact', async () => {
     await assertFixtureInventory(SNAPSHOT_DIR, [
       'session.v3.jsonl', 'search-results.expected.md', 'trajectory.expected.md',
-      'terminal-card.expected.md',
+      'terminal-card.expected.md', 'timing.expected.md',
     ])
   })
 })

@@ -179,7 +179,7 @@ describe('ui-sidebar-right apply', () => {
       id: 'spec/files',
       kind: 'files',
       title: () => 'Files',
-      guide: [{ order: 10, title: () => 'Files' }],
+      guide: [{ id: 'default', order: 10, title: () => 'Files' }],
     })
     expect(seen).toHaveBeenCalledOnce()
     expect(guideEntries.getSnapshot().map(entry => entry.kind)).toEqual(['files'])

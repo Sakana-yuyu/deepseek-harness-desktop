@@ -1,8 +1,10 @@
 {
   "name": "@deepseek-ai/dsh-experimental-inspector",
   "description": "Experimental cross-realm CDP hub for Host debugging and Client Runtime inspection",
-  "version": "0.1.5-rc.2",
-  "private": true,
+  "version": "0.1.6-alpha.1",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
@@ -33,10 +35,12 @@
   "files": [
     "lib/index.js",
     "lib/client.js",
+    "lib/worker.js",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
   "dependencies": {
+    "@deepseek-ai/dsh-app-boot": "workspace:^",
     "@deepseek-ai/dsh-brand": "workspace:^",
     "@deepseek-ai/dsh-util-crypto": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^",

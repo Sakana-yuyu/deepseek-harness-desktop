@@ -97,6 +97,7 @@ class FakeReader implements SubprocessOutputReader {
  * abort→terminate escalation.
  */
 class FakeHandle implements SubprocessHandle {
+  readonly control = undefined
   readonly stdin = undefined
   readonly stdout = undefined
   readonly stderr = undefined
@@ -147,6 +148,7 @@ class FakeHandle implements SubprocessHandle {
  * assert on the exact spawn specs and settled handles.
  */
 class FakeSubprocess extends SubprocessRuntime {
+  async terminalEnvironment() { return { platform: 'posix' as const } }
   spawns: SubprocessSpawnSpec[] = []
   override async resolveExecutable(command: string): Promise<string> { return command }
   override spawnTerminal(): Promise<never> { throw new Error('search tools spawn pipes, never terminals') }

@@ -443,7 +443,7 @@ export function parseVendoredRows(text: string): VendoredRow[] {
  * disclosed, so a row that stops matching the table format is a hard error
  * rather than a package that quietly vanishes from the notices.
  */
-function collectVendored(): VendoredRow[] {
+function collectVendored(): (VendoredRow & { sourceDirectory: string })[] {
   const rows = parseVendoredRows(readFileSync(resolve(root, 'vendor/README.md'), 'utf8'))
   const onDisk = new Map<string, string>()
   for (const entry of readdirSync(resolve(root, 'vendor'), { withFileTypes: true })) {
@@ -457,15 +457,15 @@ function collectVendored(): VendoredRow[] {
   if (missing.length > 0) {
     throw new Error(`gen-third-party-notices: vendor/README.md has no manifest-table row for ${missing.join(', ')}; its table format changed or the sync is incomplete.`)
   }
-  for (const row of rows) {
+  return rows.map((row) => {
     const dir = onDisk.get(row.npmName)
     if (dir === undefined) throw new Error(`gen-third-party-notices: vendored package ${row.npmName} from vendor/README.md has no vendor/ directory.`)
     const license = readManifest(`vendor/${dir}/package.json`).license
     if (license !== 'MIT') {
       throw new Error(`gen-third-party-notices: vendored ${row.npmName} declares license ${JSON.stringify(license)}; the vendored section assumes MIT throughout.`)
     }
-  }
-  return rows
+    return { ...row, sourceDirectory: `vendor/${dir}` }
+  })
 }
 
 /** Whether a parsed TOML value is a table rather than an array or scalar. */
@@ -725,9 +725,9 @@ The complete npm transitive closure, including the Landlock launcher workspace, 
 
 The Cordis framework and its foundation libraries are source-vendored into this repository rather than consumed from npm, and republished under the \`@deepseek-ai\` scope. All are MIT-licensed; each directory preserves its upstream \`LICENSE\` file. Exact upstream commits and local modifications are recorded in [\`vendor/README.md\`](vendor/README.md).
 
-| Package | Upstream name | Upstream | License |
+| Package | Upstream name | Source | License |
 | --- | --- | --- | --- |
-${vendored.map(row => `| \`${row.npmName}\` | \`${row.upstreamName}\` | [${row.upstream.replace('https://', '')}](${row.upstream}) | MIT |`).join('\n')}
+${vendored.map(row => `| \`${row.npmName}\` | \`${row.upstreamName}\` | [${row.sourceDirectory}](${row.sourceDirectory}/) | MIT |`).join('\n')}
 
 ## Runtime npm dependencies
 

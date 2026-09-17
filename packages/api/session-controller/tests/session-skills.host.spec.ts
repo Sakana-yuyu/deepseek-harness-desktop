@@ -90,7 +90,7 @@ describe('SessionSkillCatalog', () => {
     const sessionId = SessionId('live-skills')
     const session = ctx.sessions.create(sessionId, { meta: { cwd: '/live/project' } })
     const agent = { id: sessionId, session, status: 'idle', ctx } as Agent
-    ctx.agents.register(agent)
+    await ctx.agents.register(agent)
     ctx.provide('sessionQuery', {
       observeSession: () => Promise.resolve(observation(sessionId, { cwd: '/live/project' })),
     } as never)

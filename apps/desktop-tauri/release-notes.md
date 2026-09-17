@@ -1,25 +1,21 @@
-# DeepSeek Harness Desktop 0.1.5-rc.2-0.1
+# DeepSeek Harness Desktop 0.1.6-alpha.1-0.1
 
 ## 中文
 
-- 同步上游 `dsh@0.1.5-rc.2`（`c291e7961a`），上游进入 0.1.5 候选阶段。
-- 模型目录更新：Chat Completions 默认切换到 DeepSeek V41 Flash，保留 V4 系列，并恢复 V4 Flash Vision Exp 条目。
-- Web 界面新增侧栏文件预览（图片、共享文件类型图标）与聊天代码块中的 Mermaid、Graphviz、SVG、HTML 图表预览，随主题适配。
-- 细化交付卡片、侧栏交互与回合时长标签（支持小时位）；修复交付文件打开、子代理会话根目录解析与 webworker 文件句柄问题。
+- 同步上游发行标签 `dsh-v0.1.6-alpha.1`，并包含其后已合入上游 `master` 的启动性能修复。
+- 包含上游运行时解析、启动性能、Web 交互和测试修复；延迟可选原生依赖与 Web 客户端组合，减少启动阶段工作。
 - 桌面壳无行为变化：保留独立 WebView 认证、自定义标题栏、托盘、通知与签名更新。
 
-更新前请结束正在运行的任务并备份 Harness 主目录。上游仍为候选版本；会话写入可能生成新的版本文件，旧版本无法读取新版本新增的数据。
+更新前请结束正在运行的任务并备份 Harness 主目录。上游仍为 alpha 版本；会话写入可能生成新的版本文件，旧版本无法读取新版本新增的数据。
 
 包含 Windows x64/x86 NSIS、macOS Intel/Apple Silicon DMG，以及 Linux x64 AppImage/deb。更新产物使用 Tauri 签名，尚无操作系统代码签名或 macOS notarization。
 
 ## English
 
-- Sync upstream `dsh@0.1.5-rc.2` at `c291e7961a`; upstream entered the 0.1.5 release-candidate stage.
-- Model catalog updates: Chat Completions now defaults to DeepSeek V41 Flash, V4 models are retained, and the V4 Flash Vision Exp entry is restored.
-- The Web UI gains sidebar file previews (images and shared file-type icons) plus Mermaid, Graphviz, SVG, and HTML diagram previews in chat code fences, adapting to the application theme.
-- Delivery cards, sidebar interactions, and turn-duration labels (with hours) are refined; delivered-file opening, subagent session-root resolution, and webworker file handles are fixed.
+- Sync upstream release tag `dsh-v0.1.6-alpha.1`, including the startup-performance fix subsequently merged to upstream `master`.
+- Includes upstream runtime-resolution, startup-performance, Web interaction, and test fixes; optional native dependencies and Web client assembly are deferred to reduce startup work.
 - No desktop-shell behavior change: the separate WebView authentication, window controls, tray, notifications, and signed updates are unchanged.
 
-Finish running tasks and back up the Harness home before upgrading. Upstream remains a release candidate. Session writes may create a new format generation; older releases cannot read data introduced by the new version.
+Finish running tasks and back up the Harness home before upgrading. Upstream remains an alpha release. Session writes may create a new format generation; older releases cannot read data introduced by the new version.
 
 Includes Windows x64/x86 NSIS, macOS Intel/Apple Silicon DMG, and Linux x64 AppImage/deb. Update artifacts carry Tauri signatures but lack operating-system code signing and macOS notarization.

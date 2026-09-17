@@ -27,6 +27,9 @@
       "path": "../../interaction/commands"
     },
     {
+      "path": "../../interaction/permission-presets"
+    },
+    {
       "path": "../../llm/llm"
     },
     {
@@ -67,6 +70,9 @@
     },
     {
       "path": "../../typert/protocol"
+    },
+    {
+      "path": "../terminal-controller/tsconfig.host.json"
     }
   ]
 }

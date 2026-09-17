@@ -217,12 +217,25 @@
   white-space: normal;
 }
 
+/* The whole pane before any content exists, so the line centres like the
+   empty states below instead of sitting in the corner. */
 .status {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 100%;
   padding: 12px 10px;
+}
+
+/* The first read, centred in the still-empty body; loaded content replaces it. */
+.bodyLoading {
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
 }
 
 .action {

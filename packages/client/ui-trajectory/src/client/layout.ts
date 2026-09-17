@@ -1062,8 +1062,9 @@ function expandSubCalls(
 function summarizeCall(
   name: string,
   argsRaw: string,
-): Pick<TrajectoryCellProps, 'text' | 'previewMarkdown'> {
+): Pick<TrajectoryCellProps, 'text' | 'previewMarkdown' | 'toolName'> {
   return {
+    toolName: name,
     text: name,
     ...(argsRaw === '' ? {} : { previewMarkdown: argsRaw }),
   }

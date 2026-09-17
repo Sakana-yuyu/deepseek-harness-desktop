@@ -184,6 +184,28 @@ describe('FilesBody', () => {
     expect(view.container.querySelector('[data-files-reload]')?.getAttribute('aria-label')).toBe(zh.reload)
   })
 
+  it('captures the body scroll offset on unmount and restores it when a tab switch remounts the tree', async () => {
+    const { view, script, instance, remount } = mountBody()
+    await act(() => script.settle({ ok: true, value: ROOT_LEVEL }))
+    const body = view.container.querySelector('[data-files-body]')!
+    fireEvent.scroll(body, { target: { scrollTop: 120 } })
+    // Scrolling writes nothing yet: the store hears the offset once, on unmount.
+    expect(instance.getSnapshot().byTab[TAB]!.scrollTop).toBe(0)
+    view.unmount()
+    expect(instance.getSnapshot().byTab[TAB]!.scrollTop).toBe(120)
+    const back = remount()
+    expect(back.container.querySelector('[data-files-body]')!.scrollTop).toBe(120)
+  })
+
+  it('a scroll before the owner aborts is not written to a forgotten bucket', async () => {
+    const { view, script, controller, instance } = mountBody()
+    await act(() => script.settle({ ok: true, value: ROOT_LEVEL }))
+    fireEvent.scroll(view.container.querySelector('[data-files-body]')!, { target: { scrollTop: 80 } })
+    act(() => { controller.abort() })
+    view.unmount()
+    expect(instance.getSnapshot().byTab[TAB]).toBeUndefined()
+  })
+
   it('an aborted record is forgotten and not seeded again while the body is still mounted', async () => {
     const { view, script, controller, instance } = mountBody()
     await act(() => script.settle({ ok: true, value: ROOT_LEVEL }))

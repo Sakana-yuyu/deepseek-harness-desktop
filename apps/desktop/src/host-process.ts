@@ -1,4 +1,4 @@
-/** Upstream-Node child lifecycle and streaming custom-protocol carrier. */
+/** Node-compatible child lifecycle and streaming custom-protocol carrier. */
 
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
@@ -65,7 +65,7 @@ export interface DesktopHostReady {
   readonly dshVersion: string
 }
 
-/** One dsh backend running under the bundled upstream Node.js executable. */
+/** One dsh backend running under an owned Node-compatible executable. */
 export class DesktopHostProcess {
   private child: ChildProcess | undefined
   private requestPipe: Writable | undefined
@@ -86,7 +86,7 @@ export class DesktopHostProcess {
   private failureReported = false
 
   /**
-   * @param node - absolute bundled upstream Node.js executable.
+   * @param executable - absolute upstream Node.js or Electron executable.
    * @param runtimeDir - immutable packages carried by the current application.
    * @param projectDir - active or staged desktop plugin profile.
    * @param inspectPort - optional loopback inspector port for workspace development.
@@ -94,7 +94,7 @@ export class DesktopHostProcess {
    * @param onFailure - Receives the first fatal child or transport failure, including after readiness.
    */
   constructor(
-    private readonly node: string,
+    private readonly executable: string,
     private readonly runtimeDir: string,
     private readonly projectDir: string,
     private readonly inspectPort?: number,
@@ -106,7 +106,7 @@ export class DesktopHostProcess {
   async start(): Promise<DesktopHostReady> {
     if (this.child !== undefined) return this.readyPromise
     const entry = join(this.runtimeDir, 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js')
-    const child = spawn(this.node, [
+    const child = spawn(this.executable, [
       ...(this.inspectPort === undefined ? [] : [`--inspect=127.0.0.1:${String(this.inspectPort)}`]),
       entry,
       this.runtimeDir,
@@ -114,9 +114,12 @@ export class DesktopHostProcess {
       ...(this.inspectPort === undefined ? [] : ['--allow-linked-profile']),
     ], {
       cwd: this.projectDir,
-      env: Object.fromEntries(Object.entries(this.environment).filter(([name]) => (
-        name !== 'NODE_OPTIONS' && name !== 'NODE_PATH' && !/^DSH_DESKTOP_/u.test(name) && !/^(?:npm|pnpm|corepack)_/iu.test(name)
-      ))),
+      env: {
+        ...Object.fromEntries(Object.entries(this.environment).filter(([name]) => (
+          name !== 'NODE_OPTIONS' && name !== 'NODE_PATH' && !/^DSH_DESKTOP_/u.test(name) && !/^(?:npm|pnpm|corepack)_/iu.test(name)
+        ))),
+        ELECTRON_RUN_AS_NODE: '1',
+      },
       stdio: ['ignore', 'pipe', 'pipe', 'pipe', 'pipe', 'ipc'],
     })
     const requestPipe = child.stdio[DESKTOP_REQUEST_PIPE_FD]

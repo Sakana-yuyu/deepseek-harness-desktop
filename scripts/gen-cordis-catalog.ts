@@ -54,6 +54,7 @@ export { REGION_BEGIN, REGION_END }
  * errors, so the partition can never silently drift from the service API.
  */
 export const SERVICE_PAGE: Record<string, string> = {
+  mcpResources: 'mcp.md',
   agentLoop: 'core.md',
   agentDefaultModel: 'core.md',
   agentPresets: 'core.md',
@@ -63,7 +64,9 @@ export const SERVICE_PAGE: Record<string, string> = {
   shell: 'shell.md',
   shellEnv: 'shell.md',
   clientModules: 'client-modules.md',
-  codeRuntime: 'code-runtime.md',
+  ptcRuntime: 'ptc-runtime.md',
+  browserUse: 'browser-use.md',
+  computerUse: 'computer-use.md',
   commands: 'commands.md',
   compaction: 'compaction.md',
   cordisInspect: 'extensions.md',
@@ -74,7 +77,6 @@ export const SERVICE_PAGE: Record<string, string> = {
   directoryPicker: 'workspace.md',
   deepseekLlmApiExtensions: 'llm-streaming.md',
   dynamicCordisRunner: 'extensions.md',
-  e2b: 'subprocess.md',
   fileUploads: 'attachment.md',
   fileReferences: 'session-reference.md',
   fs: 'filesystem.md',
@@ -91,6 +93,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   terminals: 'terminal.md',
   sandbox: 'sandbox.md',
   sandboxPolicy: 'sandbox.md',
+  ssh: 'ssh.md',
   sessionPersistence: 'persistence.md',
   sessionQuery: 'session-query.md',
   sessionFileReferences: 'session-reference.md',
@@ -125,6 +128,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   workspaceRegistry: 'workspace.md',
   workspaceController: 'workspace.md',
   workspaceFiles: 'workspace.md',
+  terminalController: 'workspace.md',
   directoryPickerController: 'workspace.md',
 }
 
@@ -147,6 +151,7 @@ export const SERVICE_PAGE: Record<string, string> = {
  * to a model as `cordis_runtime_inspect what:"client"`).
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
+  webTerminals: 'client-side terminal view models — packages/api/terminal-controller/README.md owns the API',
   appReady: 'not a service: launcher-provided successful-startup signal — packages/boot/cmdline/README.md owns the launcher contract',
   appExit: 'not a service: launcher-provided bounded process-exit callback — packages/boot/cmdline/README.md owns the launcher contract',
   cmdlineArgs: 'not a service: launcher-provided immutable app argument accessor — packages/boot/cmdline/README.md owns the launcher contract',
@@ -154,6 +159,7 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   launcherSessionQueryPath: 'not a service: launcher-provided boot-context value (string | undefined) — packages/session-query/session-query-sqlite/README.md owns this launcher contract',
   dshHomePath: 'not a service: boot-provided root accessor function (typeof dshHomePath | undefined) for Loader !!js config expressions — packages/boot/app-boot/README.md owns the boot contract',
   launchEnvironment: 'not a service: launcher-provided root accessor value (LaunchEnvironmentSnapshot | undefined) — packages/util/launch-environment/README.md owns this launcher contract',
+  pluginPackages: 'profile-boot-owned package resolver service used by optional consumers — packages/boot/app-boot/README.md owns this internal API',
   connection: 'interface-typed (HostConnectionHandle); implementing class HostConnectionService is declared in rpc-host.ts — packages/client/connection/README.md owns the API',
   fileUpload: 'client-side browser upload service — packages/client/file-upload/README.md owns the API',
   uiRenderer: 'client-side interface-typed browser service — packages/client/ui-renderer/README.md owns the API',
@@ -196,6 +202,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'api-session': 'session.md',
   'approval': 'approval.md',
   'commands': 'commands.md',
+  'compaction': 'compaction.md',
   'cordis': 'extensions.md',
   'authorization': 'credentials.md',
   'credentials': 'credentials.md',
@@ -203,6 +210,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'fs': 'filesystem.md',
   'goal': 'goal.md',
   'llm': 'llm-streaming.md',
+  'permission-presets': 'permission-presets.md',
   'session': 'session.md',
   'settings': 'settings.md',
   'skills': 'skills.md',
@@ -245,6 +253,8 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  BrowserUseProviderName: 'browser-use.md',
+  ComputerUseProviderName: 'computer-use.md',
   Agent: 'core.md',
   AgentCancelCause: 'core.md',
   AgentFactory: 'core.md',
@@ -352,6 +362,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   SessionSelectModelRequest: 'session.md',
   SessionSelectModelValue: 'session.md',
   SessionSummary: 'session.md',
+  SessionMessageProjection: 'session.md',
   SessionUpdateQueueRequest: 'session.md',
   SessionUpdateQueueValue: 'session.md',
   EncodedFileUploadRequest: 'attachment.md',
@@ -378,7 +389,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   SaveFileStreamAttachment: 'attachment.md',
   ImageAttachmentAccess: 'llm-streaming.md',
   ImageAttachmentRef: 'attachment.md',
-  ImageRequestPolicy: 'attachment.md',
+  ImageRequestTarget: 'attachment.md',
+  ProjectedDimensions: 'attachment.md',
   PromptContentPart: 'attachment.md',
   RequestImageAttachment: 'attachment.md',
   SaveImageAttachment: 'attachment.md',
@@ -394,9 +406,12 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   SubprocessOutputReader: 'subprocess.md',
   SubprocessSpawnSpec: 'subprocess.md',
   SubprocessTerminalHandle: 'subprocess.md',
+  SubprocessTerminalEnvironment: 'subprocess.md',
   SubprocessTerminalSpawnSpec: 'subprocess.md',
-  CodeRunRequest: 'code-runtime.md',
-  CodeRunResult: 'code-runtime.md',
+  PtcRunRequest: 'ptc-runtime.md',
+  PtcRunSpec: 'ptc-runtime.md',
+  PtcRunSandbox: 'ptc-runtime.md',
+  PtcRunResult: 'ptc-runtime.md',
   CompactionResult: 'compaction.md',
   CompactionTrigger: 'compaction.md',
   PruneResult: 'compaction.md',
@@ -466,6 +481,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   TerminalSpawnRequest: 'terminal.md',
   TerminalSpawnResult: 'terminal.md',
   SandboxPolicyRequest: 'sandbox.md',
+  SshConnection: 'ssh.md',
+  SshStreamEndpoint: 'ssh.md',
   ScopeKey: 'scope.md',
   Scoped: 'scope.md',
   EpochHeader: 'session.md',
@@ -614,6 +631,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   WorkflowRun: 'workflow.md',
   VerifiedWebhookDelivery: 'webhook.md',
   WebhookRule: 'webhook.md',
+  PermissionCatalog: 'permission-presets.md',
   PresetOption: 'permission-presets.md',
   PresetSpec: 'permission-presets.md',
   InvariantInstaller: 'invariants.md',
@@ -638,6 +656,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   WorkspaceInsertSessionBeforeRequest: 'workspace.md',
   WorkspaceOrderValue: 'workspace.md',
   WorkspaceRenameRequest: 'workspace.md',
+  WorkspaceUnarchiveSessionRequest: 'workspace.md',
   WorkspaceValue: 'workspace.md',
   ClientArtifactBaseline: 'client-modules.md',
   WebBootGraph: 'client-modules.md',
@@ -682,11 +701,15 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
   'ReadonlyMap',
   'Request',
   'Response',
+  'ReturnType',
   'Uint8Array',
 ])
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  McpResourceProvider: 'scoped resource provider is owned by packages/mcp/mcp-resources/README.md',
+  'z.ZodType': 'Zod response validation API is owned by https://zod.dev/packages/zod',
+  Socket: 'Node.js byte stream API is owned by https://nodejs.org/api/net.html#class-netsocket',
   z: 'schemastery schema constructor is owned by vendor/schemastery (vendored upstream)',
   BeginCommandRequest: 'event-local request contract is owned by packages/client/ui-input-trigger/src/types.ts',
   InsertReferenceRequest: 'event-local request contract is owned by packages/client/ui-input-trigger/src/types.ts',
@@ -752,11 +775,9 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   InvariantRegistration: 'service-local lifecycle handle is owned by packages/runtime-diagnostics/invariants/README.md',
   JsonValue: 'JSON value union is owned by packages/core/session/src/json.ts',
   KnobState: 'projection unit state fields are owned by packages/interaction/permission-presets/README.md',
-  PermissionSelect: 'permissions projection payload is owned by packages/interaction/permission-presets/src/types.ts',
   PromptAssembly: 'assembly result is owned by packages/core/system-prompt/README.md',
   RequestRunId: 'dynamic-package payload contract is owned by packages/extensions/cordis-host-runner/src/types.ts',
   RpcReceipt: 'carrier-layer receipt is owned by packages/client/connection/src/rpc.ts',
-  Sandbox: 'external E2B SDK handle is owned by packages/e2b/e2b/README.md',
   SessionForkSource: 'service-local fork input is owned by packages/core/session/src/index.ts',
   SubagentRunEndInfo: 'event payload contract is owned by packages/subagent/subagent/src/types.ts',
   SubagentRunInfo: 'event payload contract is owned by packages/subagent/subagent/src/types.ts',
@@ -772,6 +793,13 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   WorkspaceFileRange: 'Host workspace file endpoint contract is owned by packages/api/workspace-files/README.md',
   WorkspaceFileStat: 'Host workspace file endpoint contract is owned by packages/api/workspace-files/README.md',
   WorkspaceFileText: 'Host workspace file endpoint contract is owned by packages/api/workspace-files/README.md',
+  TerminalShell: 'Browser terminal shell profiles are owned by packages/api/terminal-controller/README.md',
+  TerminalEnvironment: 'Browser terminal environment fields are owned by packages/api/terminal-controller/README.md',
+  WebTerminalInfo: 'Browser terminal metadata is owned by packages/api/terminal-controller/README.md',
+  TerminalCreateRequest: 'Browser terminal allocation fields are owned by packages/api/terminal-controller/README.md',
+  TerminalAttachmentId: 'Browser terminal input ownership is owned by packages/api/terminal-controller/README.md',
+  TerminalFrame: 'Browser terminal stream frames are owned by packages/api/terminal-controller/README.md',
+  WebTerminalId: 'Browser terminal identity is owned by packages/api/terminal-controller/README.md',
 }
 
 /** Repository data policy consumed by the Cordis catalog projector. */

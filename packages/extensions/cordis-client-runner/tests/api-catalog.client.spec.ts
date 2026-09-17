@@ -17,6 +17,7 @@ describe('Client Cordis inspect catalog', () => {
         'rename(workspaceId: WorkspaceId, title: string): Promise<WorkspaceView>',
         'delete(workspaceId: WorkspaceId): Promise<void>',
         'archiveSession(sessionId: SessionId): Promise<void>',
+        'unarchiveSession(sessionId: SessionId): Promise<void>',
         'insertSessionBefore( workspaceId: WorkspaceId, sessionId: SessionId, beforeSessionId?: SessionId, ): Promise<WorkspaceView>',
       ])
     expect(SERVICE_API.find(service => service.key === 'uiWorkspace')?.methods.map(method => method.signature))
@@ -27,6 +28,7 @@ describe('Client Cordis inspect catalog', () => {
         'connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>',
         'startSession(workspaceId?: WorkspaceId): void',
         'archiveSession(sessionId: SessionId): Promise<void>',
+        'unarchiveSession(sessionId: SessionId): Promise<void>',
         'pickDirectory(): Promise<string | null>',
         'listDirectory(path?: string, signal?: AbortSignal): Promise<DirectoryListing>',
         'createDirectory(path: string, name: string): Promise<string>',

@@ -183,6 +183,97 @@ Host service backing the generated `ctx.remote.directoryPicker` namespace. The s
 
 Source: [`packages/api/workspace-controller/src/directory-picker.ts`](../../packages/api/workspace-controller/src/directory-picker.ts)
 
+<a id="ctxterminalcontroller--terminalcontroller"></a>
+
+### `ctx.terminalController` — `TerminalController`
+
+Typed Remote control of transient Session-owned terminal processes.
+
+```ts cordis-catalog
+/**
+ * Read the Session working directory and terminal limits without resolving a shell.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param signal - request cancellation.
+ * @returns the Session workspace directory and terminal limits.
+ */
+@Remote environment(agent: Agent, signal: AbortSignal): TerminalEnvironment
+
+/**
+ * Discover installed shells in the Session's execution environment.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param signal - request cancellation.
+ * @returns verified profiles, with the configured or system default first.
+ */
+@Remote shells(agent: Agent, signal: AbortSignal): Promise<TerminalShell[]>
+
+/**
+ * List retained terminals without resolving or activating an Agent.
+ * @param sessionId - displayed Session identity, including offline history.
+ * @returns terminals retained for this Host lifetime.
+ */
+@Remote list(sessionId: SessionId): WebTerminalInfo[]
+
+/**
+ * Allocate an interactive shell once for a caller-generated identity.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param request - initial dimensions and idempotency identity.
+ * @param signal - allocation cancellation; committed terminals survive disconnection.
+ * @returns the existing or newly committed terminal.
+ */
+@Remote async create(agent: Agent, request: TerminalCreateRequest, signal: AbortSignal): Promise<WebTerminalInfo>
+
+/**
+ * Attach to a terminal without binding its process lifetime to the transport.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param id - terminal identity.
+ * @param attachmentId - new exclusive input attachment.
+ * @param signal - physical stream cancellation.
+ * @returns screen recovery followed by output and metadata changes.
+ */
+@Remote({ mode: 'stream' }) follow(agent: Agent, id: WebTerminalId, attachmentId: TerminalAttachmentId, signal: AbortSignal): AsyncIterable<TerminalFrame>
+
+/**
+ * Deliver raw input, including Tab completion and control characters.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param id - terminal identity.
+ * @param attachmentId - current writable attachment.
+ * @param data - input bytes represented as UTF-8 text.
+ * @returns after provider input acceptance.
+ */
+@Remote async write(agent: Agent, id: WebTerminalId, attachmentId: TerminalAttachmentId, data: string): Promise<void>
+
+/**
+ * Update the dimensions of the PTY and recovery screen.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param id - terminal identity.
+ * @param attachmentId - current writable attachment.
+ * @param cols - column count.
+ * @param rows - row count.
+ * @returns after the resize completes.
+ */
+@Remote async resize(agent: Agent, id: WebTerminalId, attachmentId: TerminalAttachmentId, cols: number, rows: number): Promise<void>
+
+/**
+ * Rename a terminal without changing its shell.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param id - terminal identity.
+ * @param title - nonempty display title, at most 120 characters.
+ */
+@Remote rename(agent: Agent, id: WebTerminalId, title: string): void
+
+/**
+ * Close an identity to future creation and kill its process range; repeated closes succeed.
+ * @param agent - Session owner supplied by the Gateway.
+ * @param id - terminal identity.
+ * @returns after provider cleanup succeeds. A failure retains the terminal for retry.
+ */
+@Remote async close(agent: Agent, id: WebTerminalId): Promise<void>
+```
+
+Types: [Agent](core.zh.md) · [SessionId](core.zh.md)
+
+Source: [`packages/api/terminal-controller/src/index.ts`](../../packages/api/terminal-controller/src/index.ts)
+
 <a id="ctxworkspacecontroller--workspacecontroller"></a>
 
 ### `ctx.workspaceController` — `WorkspaceController`
@@ -231,6 +322,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
  * @returns the complete resulting archive set.
  */
 @Remote('archiveSession') archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue>
+
+/**
+ * Restore one archived Session to Workspace grouping surfaces.
+ * @param request - Session identity to unarchive.
+ * @returns the complete resulting archive set.
+ */
+@Remote('unarchiveSession') unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue>
 
 /**
  * Stream a complete Workspace baseline followed by ordered increments.
@@ -383,6 +481,18 @@ insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly Workspac
  * @returns resolution after durability.
  */
 archiveSession(sessionId: SessionId): Promise<void>
+
+/**
+ * Unarchive one session durably by dropping it from the registry-global
+ * archive set; the accounting slot was never touched, so the session
+ * returns to its recorded position. Unarchiving runs no session-existence
+ * check because removing an id cannot introduce an unknown one, so an
+ * entry whose session is gone still resolves. An id that is not archived
+ * resolves without writing.
+ * @param sessionId - The session to unarchive.
+ * @returns resolution after durability.
+ */
+unarchiveSession(sessionId: SessionId): Promise<void>
 
 /**
  * Resolve by canonical directory path without creating or mutating a

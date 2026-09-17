@@ -94,7 +94,7 @@ Session projection 是可选能力。`ctx.sessionProjections` 存在时，插件
 | [`src/projection.ts`](src/projection.ts) | 可选的 seed-aware Session projection 与严格检查点 schema |
 | [`src/client.ts`](src/client.ts) | 浏览器安全的纯类型 `ScheduleRecord` 导出 |
 | [`src/transaction.ts`](src/transaction.ts) | 读取与持久变更的 agent 范围串行化 |
-| [`src/invariant.ts`](src/invariant.ts) | `./invariant` 配套模块，对现有日志与候选事件应用回放策略 |
+| [`src/invariant.ts`](src/invariant.ts) | 位于 `./invariant` 的 `schedule-invariant` 配套模块，对现有日志与候选事件应用回放策略 |
 
 ### 持久状态与回放
 

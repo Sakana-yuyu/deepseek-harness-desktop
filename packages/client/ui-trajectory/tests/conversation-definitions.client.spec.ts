@@ -335,12 +335,19 @@ describe('Trajectory conversation Definitions', () => {
     const finalizedPacked = snapshot(assembler(finalizedInputs))
     expect(finalizedPacked.eventNodes.find(node => node.kind === 'assistant')).toMatchObject({
       blocks: [{ kind: 'text', text: 'done' }],
-      timing: { firstTokenTime: null },
+      timing: { firstTokenTime: 3_000 },
     })
     expect(finalizedPacked.requests).toMatchObject([{
       purpose: 'assistant',
       retry: 1,
     }])
+
+    const windowed = assembler(finalizedInputs.slice(2), true)
+    const assistant = () => snapshot(windowed).eventNodes.find(node => node.kind === 'assistant')
+    expect(assistant()).toMatchObject({ timing: { stepStartTime: null, firstTokenTime: 3_000 } })
+    windowed.prepend(finalizedInputs.slice(0, 2), false)
+    windowed.flush()
+    expect(assistant()).toEqual(finalizedPacked.eventNodes.find(node => node.kind === 'assistant'))
 
     const namedToolHistory = [
       at(40, 'turn/start', { turn: 3 }),
@@ -365,7 +372,7 @@ describe('Trajectory conversation Definitions', () => {
     const namedToolPacked = snapshot(assembler(namedToolInputs))
     expect(namedToolPacked.eventNodes.find(node => node.kind === 'assistant')).toMatchObject({
       blocks: [{ kind: 'tool-call', callId: 'call-2', name: 'read', argsRaw: '' }],
-      timing: { firstTokenTime: null },
+      timing: { firstTokenTime: 4_000 },
     })
   })
 
@@ -397,11 +404,16 @@ describe('Trajectory conversation Definitions', () => {
       purpose: 'assistant',
       resultSeq: 3,
       status: 'error',
-      provenance: { provider: 'test', model: 'test' },
+      providerMetadata: { provider: 'test', model: 'test' },
     }])
   })
 
   it('keeps parallel roots, raw Tool facts, and mixed-ID PTC dispatch results', () => {
+    const error = {
+      name: 'AutoReviewDeniedError',
+      code: 'AUTO_REVIEW_DENIED',
+      reason: ' raw\r\nreason ',
+    }
     const current = snapshot(assembler([
       at(1, 'turn/start', { turn: 1 }),
       at(2, 'step/start', { turn: 1, step: 1 }),
@@ -433,7 +445,7 @@ describe('Trajectory conversation Definitions', () => {
       at(8, 'tool/ptc-dispatch', {
         rootCallId: 'root-a', parentCallId: 'root-b:code:1', subCallId: 'root-b:ptc:2',
         name: 'read', arguments: { file_path: 'nested.txt' },
-        isError: false, content: [{ type: 'text', text: 'nested contents' }],
+        isError: true, error, content: [{ type: 'text', text: 'not executed' }],
       }),
       at(9, 'tool/result', {
         turn: 1,
@@ -469,7 +481,8 @@ describe('Trajectory conversation Definitions', () => {
         kind: 'tool-result', callId: 'root-b:code:1', parentCallId: 'root-a', call: { name: 'read' },
         subCalls: [{
           kind: 'tool-result', callId: 'root-b:ptc:2', parentCallId: 'root-b:code:1',
-          callTime: 1_700_000_000_007, content: [{ type: 'text', text: 'nested contents' }], subCalls: [],
+          callTime: 1_700_000_000_007, content: [{ type: 'text', text: 'not executed' }],
+          isError: true, error, subCalls: [],
         }],
       }],
     })

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-web-app",
   "description": "The dsh browser-surface bundle: the web patch layer over dsh-base plus the runtime glue plugin (frontend dist serving, web-surface prompt, bash runtime variables, URL line)",
-  "version": "0.1.5-rc.2",
+  "version": "0.1.6-alpha.1",
   "publishConfig": {
     "access": "public"
   },
@@ -81,6 +81,7 @@
     "@deepseek-ai/dsh-client-ui-settings-models": "workspace:^",
     "@deepseek-ai/dsh-client-ui-settings-plugin-inventory": "workspace:^",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-settings-unarchive-sessions": "workspace:^",
     "@deepseek-ai/dsh-client-ui-sidebar": "workspace:^",
     "@deepseek-ai/dsh-client-ui-sidebar-files": "workspace:^",
     "@deepseek-ai/dsh-client-ui-sidebar-right": "workspace:^",
@@ -94,7 +95,6 @@
     "@deepseek-ai/dsh-client-ui-workflow-run": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
     "@deepseek-ai/dsh-cmdline": "workspace:^",
-    "@deepseek-ai/dsh-code-runtime-worker-thread": "workspace:^",
     "@deepseek-ai/dsh-cordis-client-runner": "workspace:^",
     "@deepseek-ai/dsh-cordis-host-runner": "workspace:^",
     "@deepseek-ai/dsh-file-reference": "workspace:^",
@@ -118,7 +118,9 @@
     "@deepseek-ai/dsh-workspace": "workspace:^",
     "@deepseek-ai/schemastery": "workspace:^",
     "commander": "^15.0.0",
-    "open": "^11.0.0"
+    "open": "^11.0.0",
+    "@deepseek-ai/dsh-api-terminal-controller": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-sidebar-terminal": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",

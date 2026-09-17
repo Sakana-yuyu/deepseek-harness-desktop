@@ -11,7 +11,7 @@ kind: "package-reference"
 
 使用这个实验性 Inspector，可以在 Chrome DevTools 中检查一个运行中的 dsh Host 及其浏览器 Client。它提供 Host 与 Client Console context、Host Sources 与调试、Host fetch 采集和共享 Cordis 树，并让 Worker 独占全部 CDP 状态。
 
-本包为私有包，不进入正式发布。Worker 不访问实时 Cordis 对象；共享 Host/Client collector 会在传输前把它们投影成已验证快照。Cordis 还负责插件组合、注册 `ctx.inspector`、注入 bootstrap 和 dispose（资源释放）。
+本包以实验性名称发布，需要显式组合。Worker 不访问实时 Cordis 对象；共享 Host/Client collector 会在传输前把它们投影成已验证快照。Cordis 还负责插件组合、注册 `ctx.inspector`、注入 bootstrap 和 dispose（资源释放）。
 
 ## 目录
 

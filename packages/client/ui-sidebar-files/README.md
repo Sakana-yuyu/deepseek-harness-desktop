@@ -43,7 +43,7 @@ The root is the session's working directory, read from `useSessions().byId[sessi
 
 A level cut by the endpoint's entry cap ends with a marker; an empty level says so; a level that failed shows one line per code — `workspace-file/not-found`, `outside-workspace`, `not-directory` — and the transport's own message otherwise. Reload drops every listed level and asks again for the expanded ones; collapsed levels are fetched again when they next open. A session without a working directory shows a single line instead of a tree.
 
-State lives in the type's own store, bucketed by tab id: `root`, `levels` (loading / ready / failed per absolute path), and `expanded`. The owner's `signal` ends a bucket: on abort the tab is forgotten and a listing that settles afterwards writes nothing.
+State lives in the type's own store, bucketed by tab id: `root`, `levels` (loading / ready / failed per absolute path), `expanded`, and `scrollTop`, which the body tracks locally while scrolling and commits once when it unmounts. Because the store outlives the body, switching to another sidebar tab and back remounts the tree with its levels intact and its scroll offset restored. The owner's `signal` ends a bucket: on abort the tab is forgotten, and neither a listing that settles afterwards nor the unmount's offset commit writes anything.
 
 <a id="model-experience"></a>
 ## Model Experience

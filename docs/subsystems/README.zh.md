@@ -25,14 +25,18 @@
 | [session-reference.md](session-reference.zh.md) | 结构化跨会话引用：`SessionReferenceInput`/`Candidate`、prepared 消息上下文、稳定错误分类 |
 | [system-prompt.md](system-prompt.zh.md) | 逐次组装的上下文、工具提供方结果、提示词段落与协作式组装 |
 | [tools.md](tools.zh.md) | `ToolDefinition` 完整字段、schema DSL、`ToolExecution`/`ToolResult`、工具展示 UI 类型，以及受保护的执行流水线 |
+| [mcp.md](mcp.zh.md) | 外部 MCP 连接、作用域工具与资源、服务器指令、协议结果与配置归属 |
 | [user-questions.md](user-questions.zh.md) | UI 支持的人工问答 seam：`AskUserQuestionRequest`、answer/options 词汇、提供方 API、错误分类体系 |
 | [approval.md](approval.zh.md) | 一次性用户审批 seam：`ApprovalRequest`、`ApprovalOutcome`、逐会话策略、审计事件和 answerer 约定 |
 | [attachment.md](attachment.zh.md) | 持久图片标识与元数据、校验输入、经校验读取，以及 `AttachmentStore` seam |
-| [shell.md](shell.zh.md) | bash 执行器 seam：`ShellExecRequest`/`Spec`、`ShellRunResult`、后台 `ShellProcess` 句柄 |
+| [shell.md](shell.zh.md) | shell 执行器 seam：`ShellExecRequest`/`Spec`、`ShellRunResult`、后台 `ShellProcess` 句柄 |
 | [subprocess.md](subprocess.zh.md) | 子进程 seam：完全显式的 `SubprocessSpawnSpec`、基于偏移的输出读取器、不含分类的 `SubprocessOutcome`，以及受管 `DSH_*` 环境词汇 |
+| [ssh.md](ssh.zh.md) | POSIX SSH 连接与远程文件系统、子进程和沙箱提供方 |
 | [terminal.md](terminal.zh.md) | 持久化终端 ID、后端/会话约定、发送就绪状态、有界读取与 owner 可见快照 |
 | [sandbox.md](sandbox.zh.md) | 每会话策略解析与进程约束 seam：文件效果模式、执行/提供方策略、`ConfinedArgv`、强制执行与故障关闭错误 |
-| [code-runtime.md](code-runtime.zh.md) | 代码执行 seam：`CodeRunRequest`/`Result`、绑定命名空间、捕获日志、`CodeRunFailure` 分类体系 |
+| [ptc-runtime.md](ptc-runtime.zh.md) | PTC 执行 seam：`PtcRunRequest`/`Result`、绑定命名空间、捕获日志、`PtcRunFailure` 分类体系 |
+| [computer-use.md](computer-use.zh.md) | 按名称独占注册计算机操作提供方，以及 Cua Driver 集成选项 |
+| [browser-use.md](browser-use.zh.md) | 按名称独占注册浏览器操作提供方、提供方选项与按 Session 管理的浏览器所有权 |
 | [extensions.md](extensions.zh.md) | 带版本的动态 Cordis 插件与包、Host/Client 激活、审批、运行时检查和生命周期清理 |
 | [filesystem.md](filesystem.zh.md) | 文件系统 seam：`FsTarget`、读/写/编辑结果、观测到的文件状态、`FsErrorCode` |
 | [lsp.md](lsp.zh.md) | LSP 导航 seam：`LspQueryRequest`/`Result`、`LspProvider`/`Service`、四种操作、`LspError` |

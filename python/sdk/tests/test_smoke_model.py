@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import runpy
 import subprocess
+import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -170,57 +171,74 @@ def test_live_smoke_rejects_unrelated_tool_without_exact_receipt(
 def test_child_prompt_precedes_runtime_context(prompt_name: str, expected: str) -> None:
     chunks = SMOKE["completion_chunks"]({
         "messages": [
-            {"role": "user", "content": SMOKE[prompt_name]},
-            {"role": "user", "content": "Current runtime context"},
+            {"role": "user", "content": [
+                {"type": "text", "text": SMOKE[prompt_name]},
+                {"type": "text", "text": "Current runtime context"},
+            ]},
         ],
     })
 
     assert any(
-        choice.get("delta", {}).get("content") == expected
+        chunk.get("delta", {}).get("text") == expected
         for chunk in chunks
-        for choice in chunk.get("choices", [])
     )
 
 
 def test_mcp_smoke_requests_the_discovered_tool() -> None:
     chunks = SMOKE["completion_chunks"]({
-        "messages": [{"role": "user", "content": SMOKE["MCP_PROMPT"]}],
-        "tools": [{"type": "function", "function": {"name": "mcp__fixture__add"}}],
+        "messages": [{"role": "user", "content": [{"type": "text", "text": SMOKE["MCP_PROMPT"]}]}],
+        "tools": [{"name": "mcp__fixture__add", "input_schema": {"type": "object"}}],
     })
 
     calls = [
-        call
+        chunk["content_block"]
         for chunk in chunks
-        for choice in chunk.get("choices", [])
-        for call in choice.get("delta", {}).get("tool_calls", [])
+        if chunk.get("type") == "content_block_start"
     ]
-    assert calls[0]["function"] == {
-        "name": "mcp__fixture__add",
-        "arguments": '{"a": 19, "b": 23}',
-    }
+    assert calls == [{"type": "tool_use", "id": "mcp-add", "name": "mcp__fixture__add", "input": {}}]
+    arguments = next(chunk["delta"]["partial_json"] for chunk in chunks if chunk.get("type") == "content_block_delta")
+    assert json.loads(arguments) == {"a": 19, "b": 23}
 
 
 def test_mcp_smoke_accepts_the_external_server_result() -> None:
     chunks = SMOKE["completion_chunks"]({
         "messages": [
-            {"role": "user", "content": SMOKE["MCP_PROMPT"]},
+            {"role": "user", "content": [{"type": "text", "text": SMOKE["MCP_PROMPT"]}]},
             {
                 "role": "assistant",
-                "tool_calls": [{
-                    "id": "mcp-add",
-                    "type": "function",
-                    "function": {"name": "mcp__fixture__add", "arguments": '{}'},
+                "content": [{
+                    "type": "tool_use", "id": "mcp-add", "name": "mcp__fixture__add", "input": {},
                 }],
             },
-            {"role": "tool", "tool_call_id": "mcp-add", "content": "42"},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "mcp-add", "content": [{"type": "text", "text": "42"}]},
+            ]},
         ],
     })
 
     assert any(
-        choice.get("delta", {}).get("content") == SMOKE["MCP_TEXT"]
+        chunk.get("delta", {}).get("text") == SMOKE["MCP_TEXT"]
         for chunk in chunks
-        for choice in chunk.get("choices", [])
     )
+
+
+def test_mock_model_serves_native_messages_events() -> None:
+    with SMOKE["MockModel"]() as model:
+        body = {"model": "smoke-model", "stream": True, "messages": [{
+            "role": "user", "content": [{"type": "text", "text": "hello"}],
+        }]}
+        request = urllib.request.Request(
+            model.url + "/v1/messages", data=json.dumps(body).encode(),
+            headers={"content-type": "application/json"},
+        )
+        with urllib.request.urlopen(request) as response:
+            stream = response.read().decode()
+        frames = [frame.splitlines() for frame in stream.strip().split("\n\n")]
+        events = [json.loads(frame[1].removeprefix("data: ")) for frame in frames]
+        assert all(frame[0] == f"event: {event['type']}" for frame, event in zip(frames, events))
+        assert events[0]["type"] == "message_start"
+        assert events[-1] == {"type": "message_stop"}
+        assert next(event["delta"]["text"] for event in events if event["type"] == "content_block_delta") == SMOKE["EXPECTED_TEXT"]
 
 
 def test_advanced_snapshot_normalizes_catalog_child_creation_time() -> None:
@@ -244,7 +262,7 @@ def test_advanced_snapshot_normalizes_catalog_child_creation_time() -> None:
     ) == {"type": "fixture/event", "data": {"childCreatedAt": 1788246207176}}
 
 
-def test_snapshot_comparison_preserves_opaque_generation_provenance() -> None:
+def test_snapshot_comparison_preserves_opaque_generation_qualifiers() -> None:
     normalize = SMOKE["normalize_session_format_comparison"]
     expected = {
         "header": {"type": "session", "version": 0, "otherVersion": 7},

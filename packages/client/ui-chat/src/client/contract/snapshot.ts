@@ -5,7 +5,7 @@ import type { ChatConversationViewNode } from './chat-nodes.ts'
 import type { TurnProcessSpec } from './turn-process.ts'
 
 export type {
-  AssistantBlock, AssistantMessageNode, AssistantProvenanceView, AssistantRequestConfig,
+  AssistantBlock, AssistantMessageNode, AssistantProviderMetadataView, AssistantRequestConfig,
   AssistantTiming, CommandNode, CompactionSummaryNode, ContextMessageNode, ConversationNode,
   ModelRetryNode, PartialAssistant, RunningToolCall, SteeringMessageNode, TodoItem,
   ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UnknownSurfaceNode,

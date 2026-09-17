@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DocumentPreviewRegistry } from '../src/client/document/registry.ts'
 import { ImageBody } from '../src/client/image/ImageBody.tsx'
-import { apply, IMAGE_BODY_ID, IMAGE_EXTENSIONS, imageBodyDefinition } from '../src/client/image/index.ts'
+import { apply, BINARY_IMAGE_EXTENSIONS, IMAGE_BODY_ID, IMAGE_EXTENSIONS, imageBodyDefinition } from '../src/client/image/index.ts'
 import { en, zh } from '../src/client/image/locales.ts'
 
 let dispose: (() => Promise<void>) | undefined
@@ -16,6 +16,7 @@ describe('image registration', () => {
     expect(definition).toEqual({
       id: IMAGE_BODY_ID,
       extensions: IMAGE_EXTENSIONS,
+      binaryExtensions: BINARY_IMAGE_EXTENSIONS,
       priority: 'builtin',
       title,
       loading: 'bytes-complete',

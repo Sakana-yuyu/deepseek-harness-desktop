@@ -370,7 +370,12 @@
   position: sticky;
   bottom: 0;
   /* Above markdown CodeBlock sticky banners (z-index 6) so the footer never
-     paints under a sticking code header while scrolling. */
+     paints under a sticking code header while scrolling. The pinned compaction
+     header (MessageItem.module.css, ui-chat) and the turn-navigation rail slot
+     (TurnNavigator.module.css, ui-chat) also take 7 to clear the same banners.
+     Among elements of equal rank the later one in DOM order wins, so the
+     composer stays above the pinned header on the extreme small-viewport
+     overlap and the pinned header stays above the rail. */
   z-index: 7;
   /* Input mask (figma 1205:27463): transcript fades out under a FIXED 36px
      band at the seat's top (the figma 24% of the resting ~150px composer),

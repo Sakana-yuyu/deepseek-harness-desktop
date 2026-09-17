@@ -53,6 +53,8 @@ export interface Mounted {
   readonly face: FilesInjected
   readonly controller: AbortController
   readonly tabActions: MockedTabActions
+  /** Render a fresh body over the same store and face, as a tab switch remounts it. */
+  readonly remount: () => RenderResult
 }
 
 /** One store instance, one face, one owner share. */
@@ -96,5 +98,5 @@ function harness(cwd: string | null) {
 export function mountBody(cwd: string | null = ROOT): Mounted {
   const { shared, ...hands } = harness(cwd)
   const view = render(<FilesBody {...shared as unknown as FilesBodyProps} />)
-  return { ...hands, view }
+  return { ...hands, view, remount: () => render(<FilesBody {...shared as unknown as FilesBodyProps} />) }
 }

@@ -199,7 +199,7 @@ interface ContinuableStart {
 }
 ```
 
-当驻留 Activation 结算时，管理器会向该 child 持久化的直接 parent 投递一条通知，说明该 epoch 如何结束，并携带其最终 assistant 内容。对每个调用方拿到过 id 的 child，这条投递都是无条件的；它发生在会让 parent 被判定为已结算的所有权释放之前，并通过与 Agent 消息相同的唤醒 Agent 投递到达驻留 parent。若 parent 自身所在的谱系已在拆卸中，这条通知会以不唤醒的方式送达，因为唤醒一个 idle Agent 是开启一个轮次，而不是排队等待工作。其来源信息使用一个独立的 kind，因此 transcript（文本记录）绝不会把运行时的记账呈现为 child 自己写下的内容。
+当驻留 Activation 结算时，管理器会向该 child 持久化的直接 parent 投递一条通知，说明该 epoch 如何结束，并携带其最终 assistant 输出中的非空文本块；若没有剩余的非空文本，则携带 `It left no closing message.`。对每个调用方拿到过 id 的 child，这条投递都是无条件的；它发生在会让 parent 被判定为已结算的所有权释放之前，并通过与 Agent 消息相同的唤醒 Agent 投递到达驻留 parent。若 parent 自身所在的谱系已在拆卸中，这条通知会以不唤醒的方式送达，因为唤醒一个 idle Agent 是开启一个轮次，而不是排队等待工作。其来源信息使用一个独立的 kind，因此 transcript（文本记录）绝不会把运行时的记账呈现为 child 自己写下的内容。
 
 ```ts type-equiv
 /**
@@ -458,9 +458,11 @@ interface SubagentProvider {
 
 提供方的 `start()` 会以已发布的 run fulfill。服务铸造唯一的 `runId`，从提供方确切的 `localAgent` 快照 `local`，观察结果，emit `subagent/start`，并返回同一个 run；`start()` rejection 意味着未发布资源已清理，且不会 emit 生命周期事件对，而发布后的结果 rejection 会结束已经 emit 的事件对。每个可继续 Activation 都会为其驻留纪元 emit 相同的仅观察事件对，因此一次冷恢复就是一段拥有自己 `runId` 的新纪元。配对的 `subagent/end` 携带相同标识与最终输出或基础设施失败。两个事件都仅用于观察，且会隔离各自的 listener 异常。其中的 `provider` 字段标明了启动 run 或 Activation 时段的提供方，并不声明该 edge 发出时提供方仍处于注册状态。
 
-## 进程内后端：深度与种子
+## 进程内后端：权限、深度与种子
 
-spawn 和 fork 后端通过 `parent.ctx` 创建一个普通的单次 agent，将取消信号传入核心创建流程，并通过 `AgentHandle` 进行 dispose；而可继续子 agent 则由继续执行管理器通过其自己的 activation-owner 作用域创建。移除提供方会阻止新的 start，但不会撤销已接受的 run。每个子 agent 获得一个新的扁平作用域，而非继承父级注册。深度与 fork 种子注入复用既有的 agent 和会话词汇：
+spawn 和 fork 后端通过 `parent.ctx` 创建一个普通的单次 agent，将取消信号传入核心创建流程，并通过 `AgentHandle` 进行 dispose；而可继续子 agent 则由继续执行管理器通过其自己的 activation-owner 作用域创建。移除提供方会阻止新的 start，但不会撤销已接受的 run。每个子 agent 获得一个新的扁平作用域，而非继承父级注册。权限、深度与 fork 种子注入复用既有的 Session 词汇：
+
+- **委派权限**在首次 await 前捕获。Auto 与 Full access 父级在 fresh child 完成 fork seed 和 sandbox／approval override 后，追加捕获的 `permission/preset` 身份。单次与可继续 child 共用此路径；cold resume 只读取 child 日志。Read Only 与 Workspace Write 保留继承的 sandbox override 加 `approval: never`，不匹配预设的组合仍为 `custom`。每个 Auto child 调用都使用既有 `parentSession`、创建 prompt 和经过核验的 human／直接父级消息独立审查。[Auto review 决策](../../.agents/notes/implemented/feature/2026-08-28-auto-review.zh.md)定义 low／medium／high 语义；不增加 委派记录、receipt、Header 字段、descriptor 字段或 Session format。
 
 - **委派深度**由持久 `SessionHeader.delegationDepth` 与可合并扩展的运行时字段 `AgentOptions.subagentDepth` 共同表示；缺失表示顶层深度为零，存在的较大值具有权威性。两个字段都归该 seam 所有——循环既不设置也不读取它们——因此进程内子 agent 会持久保存 parent 深度 + 1，冷恢复无法降低深度，而且每次 start 都会拒绝超出安全整数域、或高于已定义绝对 `request.maxDepth` 上限的派生深度。
 - **Fork 种子注入**使用 [`CreateAgentOptions.seed`](core.zh.md#creation-and-ownership)（一个 `SessionEvent[]` 前缀，经由 `AgentLoop.createAgent` → `ctx.sessions.prepare({ seed })` 传递，与 `ctx.agents.resume()` 使用的原语相同）。fork 后端传入父级日志的一段*平衡的已完成轮次前缀*——父级事件直到并包括其最后一个 `turn/end`——因此种子从 0 连续，[invariants](../../packages/runtime-diagnostics/invariants) 回放可以接受它（进行中的、未平衡的轮次被排除在外）。

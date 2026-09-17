@@ -249,10 +249,9 @@ jobs:
       - name: Configure persistent pnpm store
         shell: pwsh
         # The store must share the ReFS workspace volume for the clone
-        # import method below; LOCALAPPDATA (C:) would cross volumes and
-        # break block clone. See 2026-08-30-windows-refs-store-block-clone-install.
+        # import method below. Runner workspaces can reside on different drives.
         run: |
-          $storeRoot = "F:\.pnpm-store"
+          $storeRoot = Join-Path ([IO.Path]::GetPathRoot($env:GITHUB_WORKSPACE)) '.pnpm-store'
           echo "PNPM_CONFIG_STORE_DIR=$storeRoot" >> $env:GITHUB_ENV
 
       - name: Install (immutable)

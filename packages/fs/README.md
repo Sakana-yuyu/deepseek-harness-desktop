@@ -22,14 +22,13 @@ The `fs/` group gives agents durable, policy-governed access to files: the `ctx.
 <a id="packages"></a>
 ## Packages
 
-Eight packages plus the remote sibling `fs-e2b` play the filesystem roles; the subsystem reference owns the exhaustive contracts and the error taxonomy.
+Eight packages play the filesystem roles; the subsystem reference owns the exhaustive contracts and the error taxonomy.
 
 | Package | Role | ctx key |
 |---|---|---|
 | [`fs/`](fs/README.md) | `ctx.fs` service contract: execution-world paths, bounded text I/O, and atomic mutations with an optional version guard | `ctx.fs` |
 | [`fs-local/`](fs-local/README.md) | Host-filesystem backend: reads, writes, and edits real files on the local machine | registers on `ctx.fs` |
 | [`fs-sandbox/`](fs-sandbox/README.md) | Sandbox-enforcing backend: fences writes and edits by the per-call sandbox mode while reads pass through | registers on `ctx.fs` |
-| [`e2b/fs-e2b`](../e2b/fs-e2b/README.md) | E2B-backed backend: file state lives in the remote execution world shared with the E2B subprocess provider | registers on `ctx.fs` |
 | [`fs-observation-policy/`](fs-observation-policy/README.md) | Read-before-edit policy: records observed presence or absence and guards write/edit through the `fs/*` events | `fs/*` listeners |
 | [`tool-fs/`](tool-fs/README.md) | Model-facing `read`, `read_image`, `write`, and `edit` tools plus their executor | registers on `ctx.tools` |
 | [`tool-fs-search/`](tool-fs-search/README.md) | Model-facing `glob` and `grep` discovery tools backed by the packaged ripgrep binary | registers on `ctx.tools` |
@@ -47,7 +46,7 @@ Start with the subsystem reference for the shared vocabulary and error taxonomy,
 
 - [Filesystem subsystem](../../docs/subsystems/filesystem.md) — targets, outcomes, guards, policy events, and the error taxonomy.
 - [Cross-family fs sandbox decision](../../.agents/notes/implemented/feature/2026-07-14-cross-family-fs-sandbox.md) — the shared sandbox mode fence over the filesystem seam.
-- [Portable execution world consumers decision](../../.agents/notes/implemented/architecture/2026-07-28-portable-execution-world-consumers.md) — why the E2B backend shares the remote execution world.
+- [Portable execution world consumers decision](../../.agents/notes/implemented/architecture/2026-07-28-portable-execution-world-consumers.md) — why filesystem and subprocess providers share one execution world.
 
 <a id="dev-note"></a>
 ## Dev Note

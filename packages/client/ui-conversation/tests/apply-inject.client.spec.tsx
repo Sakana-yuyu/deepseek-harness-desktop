@@ -42,7 +42,6 @@ async function bench() {
     },
   }))
   const uploads = new Map<SessionId, (...args: unknown[]) => Promise<unknown>>([[ROOT, rootUpload]])
-  runtime.fileUpload.available = true
   runtime.fileUpload.upload = (sessionId: SessionId, ...args: unknown[]) => {
     const upload = uploads.get(sessionId)
     if (upload === undefined) throw new Error('test file upload has no Session fixture')

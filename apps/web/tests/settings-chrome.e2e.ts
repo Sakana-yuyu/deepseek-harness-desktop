@@ -274,7 +274,7 @@ describe('web e2e: settings modal and General preferences', () => {
         return {
           attr: document.body.hasAttribute('data-ds-dark-theme'),
           background: getComputedStyle(boot).backgroundColor,
-          colorScheme: document.documentElement.style.colorScheme,
+          colorScheme: getComputedStyle(document.documentElement).colorScheme,
         }
       })
       expect(state).toEqual({

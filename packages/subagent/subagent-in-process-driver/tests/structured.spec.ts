@@ -33,13 +33,13 @@ async function mountInvariants(ctx: Context): Promise<void> {
   await ctx.plugin(AgentLoopInvariant)
 }
 
-interface CodeRunRequestLike {
+interface PtcRunRequestLike {
   bindings: { global: string; functions: Record<string, (args: unknown) => Promise<unknown>> }[]
 }
 
 interface SetupOptions {
   toolMode?: ToolConfig['mode']
-  codeRun?: (request: CodeRunRequestLike) => Promise<{ logs: never[]; value?: unknown }>
+  codeRun?: (request: PtcRunRequestLike) => Promise<{ logs: never[]; value?: unknown }>
 }
 
 const SCHEMA: ObjectJsonSchema = {
@@ -60,9 +60,10 @@ async function setup(script: Script, options: SetupOptions = {}) {
     tools: { mode: options.toolMode ?? 'native' },
   })
   if (options.toolMode === 'ptc' || options.toolMode === 'both') {
-    ctx.provide('codeRuntime', {
+    ctx.provide('ptcRuntime', {
       language: 'typescript',
       isolation: 'test',
+      resolve: (request: import('@deepseek-ai/dsh-ptc-runtime').PtcRunRequest) => ({ ...request, cwd: request.cwd ?? process.cwd(), timeoutMs: 120_000 }),
       run: options.codeRun ?? (() => Promise.resolve({ logs: [] })),
     } as never)
   }

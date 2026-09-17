@@ -105,7 +105,7 @@ process.send({ type: 'ready', protocolVersion: 3, dshVersion: 'split-runtime' })
 function onRequestFrame(frame) {
   if (frame.type !== 1) return
   responseStart(frame.streamId)
-  responseData(frame.streamId, JSON.stringify({runtime: process.argv[2], profile: process.argv[3], cwd: process.cwd(), nodePath: process.env.NODE_PATH}))
+  responseData(frame.streamId, JSON.stringify({runtime: process.argv[2], profile: process.argv[3], cwd: process.cwd(), nodePath: process.env.NODE_PATH, runAsNode: process.env.ELECTRON_RUN_AS_NODE}))
   responseEnd(frame.streamId)
 }
 `)
@@ -116,7 +116,7 @@ function onRequestFrame(frame) {
     })
     try {
       const response = await host.fetch(new Request('dsh-app://app/environment'))
-      expect(await response.json()).toEqual({ runtime, profile, cwd: realpathSync(profile) })
+      expect(await response.json()).toEqual({ runtime, profile, cwd: realpathSync(profile), runAsNode: '1' })
     } finally { await host.stop() }
   })
 

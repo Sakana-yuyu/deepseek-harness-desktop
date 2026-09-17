@@ -75,7 +75,7 @@ kind: "package-reference"
 
 ### 设计概念
 
-本执行器是 `ctx.shell` seam 的沙箱 Service Provider：它继承 `dsh-bash-local` 的进程机制，把每条命令的精确 `['bash', '-c', command]` argv 经 `ctx.sandbox.confine()` 重新包装，并直接 spawn 返回的 argv。由哪种平台 runner 限制命令、以及是否有 runner 可用，属于提供方职责；本包只负责 bash 侧：所选模式、强制执行完整度，以及结果上的拒绝分类。
+本执行器是 `ctx.shell` seam 的沙箱 Service Provider：它继承 `dsh-bash-local` 的进程机制，通过 `ctx.sandbox.confine()` 等待每条命令的精确 `['bash', '-c', command]` argv 完成限制准备，再直接 spawn 返回的 argv。前台准备使用本地执行器与命令共享的 deadline；在 spawn 前超时不会声明 enforcement 事实。后台准备只跟随调用方信号。两条路径都在 spawn 前重新检查取消状态。由哪种平台 runner 限制命令、以及是否有 runner 可用，属于提供方职责；本包只负责 bash 侧：所选模式、强制执行完整度，以及结果上的拒绝分类。
 
 ### 源码地图
 
@@ -92,7 +92,7 @@ kind: "package-reference"
 
 ### 不变式
 
-- **失败关闭**——受限模式没有可用 runner 时抛 `SANDBOX_UNAVAILABLE`；受限策略绝不会出现无隔离直通。
+- **失败关闭**——受限模式没有可用 runner 时以 `SANDBOX_UNAVAILABLE` 拒绝；受限策略绝不会出现无隔离直通。
 - **seam 只报告拒绝**——本执行器从不授予权限；批准流程位于工具层。
 - **按进程保留事实**——隔离事实在结算前按句柄保留，因为提供方可能在重叠调用之间改变强制执行方式。
 - **只约束文件影响**——模式词汇只声称文件影响。
@@ -170,7 +170,7 @@ kind: "package-reference"
 
 - **限制只覆盖文件影响**——不提供网络限制和统一的进程可见性保证，因此这些模式不是通用安全沙箱。
 - **拒绝从失败命令的 stderr 推断**——后端特征使该推断可跨平台使用，但包含相同特征的应用错误可能被分类为拒绝，也可能遗漏未出现在保留尾部中的拒绝。
-- **异步观测到的后台 runner 失败没有即时错误通道**——它记录在已结算进程上，并在调用方用 `job_output` 读取通用任务时呈现；同步抛出且指明 runner 路径的子进程错误则会让 `start()` 立即失败。
+- **异步观测到的后台 runner 失败没有即时错误通道**——它记录在已结算进程上，并在调用方用 `job_output` 读取通用任务时呈现；同步 subprocess throw 若指明 runner 路径，则会在发布句柄前拒绝 `start()`。
 - **`danger-full-access` 有意绕过 `ctx.sandbox`**——它是显式无约束模式，不是更宽的沙箱 profile。
 
 <a id="dev-note"></a>

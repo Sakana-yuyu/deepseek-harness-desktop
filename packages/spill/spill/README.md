@@ -93,7 +93,7 @@ The package is built on one separation and a deliberate minimum:
 
 ### Data model
 
-`SaveTextSpill` separates storage ownership from descriptive provenance. `SpillSource` accepts either the tool source `{ kind: "tool", toolName, callId, label }` or `{ kind: "session-reference", sessionId, label }`, whose id names the captured source session. Session references never fabricate tool call ids. Neither provenance nor the owner namespace grants read access. Consumers treat the returned locator as opaque and present it with its retrieval hint.
+`SaveTextSpill` separates storage ownership from its source description. `SpillSource` accepts either the tool source `{ kind: "tool", toolName, callId, label }` or `{ kind: "session-reference", sessionId, label }`, whose id names the captured source session. Session references never fabricate tool call ids. Neither the source descriptor nor the owner namespace grants read access. Consumers treat the returned locator as opaque and present it with its retrieval hint.
 
 ### Lifecycle
 

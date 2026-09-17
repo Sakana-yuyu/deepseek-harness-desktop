@@ -48,7 +48,7 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `maxMembers` | `8` | 一支团队最多可创建的 teammate 数，包括失败的 |
+| `maxMembers` | `16` | 一支团队最多可创建的 teammate 数，包括失败的 |
 | `maxTasks` | `256` | 任务板上最多的活动任务数 |
 | `maxPendingMessagesPerMember` | `64` | 单个成员最多可排队的消息数 |
 | `maxMessageBytes` | `65,536` | 单条发送消息的最大尺寸 |

@@ -145,13 +145,14 @@ export class ToolResultPruner extends Service {
     const pruned: PrunedEntry[] = []
     let charsRemoved = 0
     for (const { seq, event } of candidates) {
-      const result = event.data.message.content[0]
+      const original = session.deriveEventMessage(event) as ToolResultMessage
+      const result = original.content[0]
       const content = this.pruneContent(result.content)
       if (content === null) continue
       const charsBefore = this.measureContent(result.content)
       const charsAfter = this.measureContent(content)
       const message = freezeMessage<ToolResultMessage>({
-        ...event.data.message,
+        ...original,
         content: [{
           ...result,
           content,
@@ -163,7 +164,7 @@ export class ToolResultPruner extends Service {
       session.append('compaction/prune', {
         shadowedRange: { start: seq, end: seq },
         shadowedSeqs: [seq],
-        shadowedTokenCount: this.ctx.tokenMeter.estimateMessage(event.data.message),
+        shadowedTokenCount: this.ctx.tokenMeter.estimateMessage(original),
       })
       const replacement = session.append('tool/result', {
         ...event.data,

@@ -51,7 +51,7 @@ kind: "package-reference"
 
 ### 设计理念
 
-浏览器半建立在一个原则之上：动态包必须与静态包共享同一套激活门控、fiber effect 清理与状态投影。求值后的插件被塞进模块表，并经 `loader.create` 挂载；卸载 = 移除 entry + 失效 factory + 撤下样式。guard 是一份白名单——生命周期动词加已声明服务——与 host 侧沙箱门面对称，因此包作者在两侧面对同一个约定。一个观察者供两个出口：只有这里监视槽位注册表的 entry-error seam，凡属于本 runner 落座过的包的崩溃，一路上行给 host（给模型），一路发布到本包自己的 `renderFailures`（给面板）。
+浏览器半建立在一个原则之上：动态包必须与静态包共享同一套激活门控、fiber effect 清理与状态投影。求值后的插件被塞进模块表，并经 `loader.create` 挂载；卸载先移除 entry，等待其 fiber 清理完成，再使 factory 失效并撤下样式。guard 是一份白名单——生命周期动词加已声明服务——与 host 侧沙箱门面对称，因此包作者在两侧面对同一个约定。一个观察者供两个出口：只有这里监视槽位注册表的 entry-error seam，凡属于本 runner 落座过的包的崩溃，一路上行给 host（给模型），一路发布到本包自己的 `renderFailures`（给面板）。
 
 ### 源码地图
 

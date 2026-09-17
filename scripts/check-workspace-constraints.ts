@@ -8,7 +8,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { isPublicExperimentalPackageDirectory } from './experimental-package-policy.ts'
+import {
+  isPublicExperimentalPackageDirectory,
+  PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES,
+} from './experimental-package-policy.ts'
 import { hasTypertRemoteNavigation, isForbiddenPublicationFile } from './publication-payload.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
 
@@ -44,12 +47,7 @@ const publicNativePackages = new Set([
 const publicationSourceAllowlist: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/node-addon-system': ['src/main.c', 'src/flock.c'],
 }
-const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.git'
-/**
- * Source home the published packages point consumers at. It differs from
- * {@link repositoryUrl}, which the Landlock packages keep because npm resolves
- * their trusted publishing against the repository that runs the workflow.
- */
+/** Public source home recorded in maintained package manifests. */
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
 /** Packages that participate in the experimental policy. */
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
@@ -68,7 +66,7 @@ const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
     'config/desktop.cordis.patch.yml',
   ],
   // Sourcemaps stay out by payload policy; the worker-preview surface
-  // (dist/preview.html and dist/preview/) backs private experimental
+  // (dist/preview.html and dist/preview/) backs opt-in experimental
   // packages and is not published.
   '@deepseek-ai/dsh-web-frontend': ['dist', '!dist/**/*.map', '!dist/preview.html', '!dist/preview'],
 }
@@ -151,6 +149,8 @@ function workspaceManifests(): WorkspaceManifest[] {
 }
 
 const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
+  // Owned Worker bundles import this public bootstrap before their business entry.
+  '@deepseek-ai/dsh-app-boot': ['lib/worker/profile-resolution-bootstrap.js'],
   // Statically linked client libraries keep their stylesheets next to the emitted
   // JavaScript, which imports them by relative path: the compile shell runs
   // them through its own CSS pipeline, so the sheets are published artifacts.
@@ -161,7 +161,11 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-client-web': ['lib/**/*.css'],
   '@deepseek-ai/dsh-client-ui-theme': ['lib/styles'],
   // The CPython side ships as source .py files, published as-is rather than built.
-  '@deepseek-ai/dsh-experimental-code-runtime-python': ['py/**/*.py'],
+  '@deepseek-ai/dsh-experimental-ptc-runtime-python': ['py/**/*.py'],
+  // The isolated Node bootstrap is a separately launched bundle.
+  '@deepseek-ai/dsh-ptc-runtime-node': ['lib/process.js'],
+  // The Host entry starts its sibling Worker by URL rather than a package export.
+  '@deepseek-ai/dsh-experimental-inspector': ['lib/worker.js'],
   // The shipped preset compositions travel inside the roster package.
   '@deepseek-ai/dsh-agent-presets': ['presets'],
   // The Web Host mounts the default-off settings owner independently of each
@@ -175,17 +179,28 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // also shares its generated FFI code through a hashed runtime chunk.
   '@deepseek-ai/dsh-sandbox-windows-acl': ['lib/runner.js', 'lib/types-*.js'],
   '@deepseek-ai/dsh-skill-badge': ['assets'],
+  '@deepseek-ai/dsh-subprocess': ['lib/control.js'],
+  // SSH launches a private helper and shares wire definitions and TLS setup
+  // between that helper and the connection owner.
+  '@deepseek-ai/dsh-ssh': [
+    'lib/helper.js', 'lib/protocol.js', 'lib/schemas.js',
+    'lib/protocol-*.js', 'lib/schemas-*.js', 'lib/stream-security-*.js',
+  ],
   // Ordinary native containment ships a path-loaded runner and its shared
   // runner chunk beside the existing node-pty permission repair.
   '@deepseek-ai/dsh-subprocess-local': [
     'lib/runner.js',
     'lib/runner-*.js',
+    'lib/output.js',
     'scripts/ensure-spawn-helper.mjs',
   ],
   // tsdown shares the repository/pack code between the lib entry and the bin
   // through a hashed chunk. The committed bin.js is the link target pnpm can
   // resolve at install time, before the build produces lib/bin.js.
   '@deepseek-ai/dsh-experimental-webworker-packer': ['bin.js', 'lib/repository-*.js'],
+  // The headless entry and its startup row share the JSON projection code
+  // through a hashed tsdown chunk; both import it by relative path.
+  '@deepseek-ai/dsh-headless': ['lib/json-stream-*.js'],
 }
 
 function sameStringList(actual: readonly string[] | undefined, expected: readonly string[]): boolean {
@@ -269,15 +284,18 @@ function usesEmittedTreeDefaults(manifest: PackageManifest): boolean {
     exportDefault(manifest, subpath)?.startsWith('./lib/types/') === true)
 }
 
-/** Experimental manifest requirements, including explicit public exceptions. */
-export function checkExperimentalManifest({ dir, manifest }: WorkspaceManifest): string[] {
+/** Experimental manifest requirements, including explicit private exceptions. */
+export function checkExperimentalManifest(
+  { dir, manifest }: WorkspaceManifest,
+  privateDirectories: readonly string[] = PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES,
+): string[] {
   if (!experimentalPackageDirectory.test(dir)) return []
   const label = manifest.name ?? dir
   const errors: string[] = []
   if (manifest.name?.startsWith(experimentalPackageNamePrefix) !== true) {
     errors.push(`${label}: experimental package name must start with ${JSON.stringify(experimentalPackageNamePrefix)}`)
   }
-  if (isPublicExperimentalPackageDirectory(dir)) {
+  if (isPublicExperimentalPackageDirectory(dir, privateDirectories)) {
     if (manifest.private === true) errors.push(`${label}: public experimental package must not set "private": true`)
     if (manifest.publishConfig?.access !== 'public') {
       errors.push(`${label}: public experimental package must set publishConfig.access to "public"`)
@@ -341,9 +359,9 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
     }
     const expectedDirectory = dir
     if (manifest.repository?.type !== 'git'
-      || manifest.repository.url !== repositoryUrl
+      || manifest.repository.url !== publishedRepositoryUrl
       || manifest.repository.directory !== expectedDirectory) {
-      errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
+      errors.push(`${label}: published Landlock package repository must use ${publishedRepositoryUrl} with directory ${expectedDirectory}`)
     }
   } else if (isReleaseMemberDirectory(dir)) {
     // Release members state that they are publishable: npm refuses a private

@@ -211,7 +211,7 @@ describe('terminalCardModel', () => {
     expect(terminalCardModel(settled({ call: null }))).toBeNull()
   })
 
-  it('derives the same terminal card for root calls and Code Dispatch children', () => {
+  it('derives the same terminal card for root calls and PTC dispatch children', () => {
     expect(terminalCardModel(settled({ parentCallId: 'parent' }))).toEqual(terminalCardModel(settled()))
     expect(terminalCardModel(running({ parentCallId: 'parent' }))).toEqual(terminalCardModel(running()))
   })

@@ -65,16 +65,20 @@ interface RuntimeResources {
   readonly node: string
   readonly pnpm: string
   readonly dsh: string
+  readonly profileResolution?: 'runtime'
 }
 
 function runtimeResources(): RuntimeResources {
   const development = !app.isPackaged
-  const node = (development ? process.env.DSH_DESKTOP_NODE_BINARY : undefined)
-    ?? join(process.resourcesPath, 'runtime', 'node', process.platform === 'win32' ? 'node.exe' : 'node')
+  const node = development
+    ? process.env.DSH_DESKTOP_NODE_BINARY
+      ?? join(process.resourcesPath, 'runtime', 'node', process.platform === 'win32' ? 'node.exe' : 'node')
+    : process.execPath
   const pnpm = (development ? process.env.DSH_DESKTOP_PNPM_ENTRY : undefined)
     ?? join(process.resourcesPath, 'runtime', 'pnpm', 'bin', 'pnpm.mjs')
-  const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined) ?? join(process.resourcesPath, 'dsh')
-  return { node, pnpm, dsh }
+  const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
+    ?? (development ? join(process.resourcesPath, 'dsh') : join(app.getAppPath(), 'dsh'))
+  return { node, pnpm, dsh, ...(development ? {} : { profileResolution: 'runtime' }) }
 }
 
 function developmentHostInspectPort(enabled: boolean): number | undefined {

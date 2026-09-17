@@ -75,7 +75,7 @@ kind: "package-reference"
 
 ### 设计概念
 
-本执行器是 `dsh-bash-sandbox` 的 pwsh 孪生：它继承 `dsh-pwsh-local` 的进程机制，消费其 argv 级 seam（`argv()`/`runArgv()`/`startArgv()`/`onProcessDone()`），并在 spawn 前把精确的 pwsh 调用经 `ctx.sandbox.confine()` 包装。隔离实体本身是平台无关的——沙箱 seam 解析到平台的 runner——而本包只负责 pwsh 侧：所选模式、强制执行完整度，以及结果上的拒绝分类。
+本执行器是 `dsh-bash-sandbox` 的 pwsh 孪生：它继承 `dsh-pwsh-local` 的进程机制，消费其 argv 级 seam（`argv()`/`runArgv()`/`startArgv()`/`onProcessDone()`），并在 spawn 前通过 `ctx.sandbox.confine()` 等待精确的 pwsh 调用完成限制准备。前台准备使用本地执行器与命令共享的 deadline；在 spawn 前超时不会声明 enforcement 事实。后台准备只跟随调用方信号。两条路径都在 spawn 前重新检查取消状态。隔离实体本身是平台无关的——沙箱 seam 解析到平台的 runner——而本包只负责 pwsh 侧：所选模式、强制执行完整度，以及结果上的拒绝分类。
 
 ### 源码地图
 
@@ -92,7 +92,7 @@ kind: "package-reference"
 
 ### 不变式
 
-- **失败关闭**——受限模式没有可用 runner 时抛 `SANDBOX_UNAVAILABLE`；受限策略绝不会出现无隔离直通。
+- **失败关闭**——受限模式没有可用 runner 时以 `SANDBOX_UNAVAILABLE` 拒绝；受限策略绝不会出现无隔离直通。
 - **seam 只报告拒绝**——本执行器从不授予权限；批准流程位于工具层。
 - **按进程保留事实**——隔离事实在结算前按句柄保留，因为提供方在不同的重叠调用中可能采用不同的强制执行方式。
 

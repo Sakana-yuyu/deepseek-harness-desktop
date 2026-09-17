@@ -344,7 +344,7 @@ export const ContextMessageNodeView = memo(function ContextMessageNodeView({ nod
     <ContextInjectionRow
       content={data.content}
       source={data.source}
-      provenance={data.provenance}
+      producer={data.producer}
       form={data.form}
       t={t}
     />

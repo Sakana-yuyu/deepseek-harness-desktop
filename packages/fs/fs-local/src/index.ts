@@ -23,6 +23,7 @@ import type {
 import {
   applyLiteralEdit,
   listDirectory,
+  localDisplayPath,
   normalizeLineEndings,
   probe,
   probeNoFollow,
@@ -139,7 +140,8 @@ export class LocalFileSystem extends FileSystem {
   override async lstat(path: string, opts?: { cwd?: string }, signal?: AbortSignal): Promise<FsPathInfo | undefined> {
     if (signal?.aborted) throw new FsError('lstat aborted', 'FS_ABORTED')
     if (path.trim().length === 0) throw new FsError('file_path must be a non-empty string', 'FS_NOT_FOUND')
-    const info = await probeNoFollow(resolve(opts?.cwd ?? this.config.cwd, path))
+    const cwd = opts?.cwd ?? this.config.cwd
+    const info = await probeNoFollow(localDisplayPath(cwd, path))
     if (signal?.aborted) throw new FsError('lstat aborted', 'FS_ABORTED')
     if (!info) return undefined
     return { version: info.version, type: info.type, size: info.size }

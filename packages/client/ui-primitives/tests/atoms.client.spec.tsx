@@ -462,8 +462,7 @@ describe('ConnectionIndicator', () => {
   it('renders outage, attempt progress, and recovered states without a native tooltip', () => {
     const reconnect = vi.fn()
     const labels = {
-      disconnectedLabel: 'Disconnected',
-      reconnectLabel: 'Reconnect',
+      disconnectedLabel: 'Disconnected, retry',
       connectingLabel: 'Connecting',
       recoveredLabel: 'Connected',
       reconnectActionLabel: 'Disconnected, reconnect now',
@@ -476,8 +475,7 @@ describe('ConnectionIndicator', () => {
     expect(container.firstChild).toBeNull()
     rerender(<ConnectionIndicator state="disconnected" {...labels} />)
     const indicator = screen.getByRole('button', { name: 'Disconnected, reconnect now' })
-    expect(indicator.textContent).toContain('Disconnected')
-    expect(indicator.textContent).toContain('Reconnect')
+    expect(indicator.textContent).toContain('Disconnected, retry')
     expect(indicator.hasAttribute('title')).toBe(false)
     expect(indicator.querySelector('svg')).toBeTruthy()
     fireEvent.click(indicator)
@@ -490,5 +488,28 @@ describe('ConnectionIndicator', () => {
     rerender(<ConnectionIndicator state="recovered" {...labels} />)
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.getByRole('status', { name: 'Connected' })).toBeTruthy()
+  })
+
+  it('fades out for the exit duration before unmounting', () => {
+    vi.useFakeTimers()
+    try {
+      const labels = {
+        disconnectedLabel: 'Disconnected, retry',
+        connectingLabel: 'Connecting',
+        recoveredLabel: 'Connected',
+        reconnectActionLabel: 'Disconnected, reconnect now',
+        restartActionLabel: 'Connecting, restart now',
+        onReconnect: vi.fn(),
+      }
+      const { container, rerender } = render(
+        <ConnectionIndicator state="disconnected" {...labels} />,
+      )
+      rerender(<ConnectionIndicator state={undefined} {...labels} />)
+      expect(screen.getByRole('button', { name: 'Disconnected, reconnect now' })).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(150) })
+      expect(container.firstChild).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

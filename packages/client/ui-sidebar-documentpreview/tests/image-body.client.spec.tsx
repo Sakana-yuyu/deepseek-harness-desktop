@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Image Blob ownership, media types, intrinsic rendering, and failure states. */
+/** Image Blob ownership, media types, pane-contained rendering, and failure states. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -64,7 +64,7 @@ describe('ImageBody', () => {
     expect(revoke).toHaveBeenCalledExactlyOnceWith('blob:https://preview.invalid/1')
   })
 
-  it('keeps the image unscaled and non-draggable, then shows it after decoding succeeds', async () => {
+  it('keeps the image non-draggable, then shows it after decoding succeeds', async () => {
     render(<ImageBody {...props('photo.svg')} />)
     const image = await screen.findByRole('img', { hidden: true })
     expect(image.getAttribute('alt')).toBe('Image preview: photo.svg')

@@ -49,7 +49,7 @@ interface ImageAttachmentAccess {
 
 ```ts type-equiv
 /** Provider/model identity and adapter-private replay data for an assistant message. */
-interface AssistantProvenance {
+interface AssistantProviderMetadata {
   /** Provider route that produced the message. */
   provider: string
   /** Provider model id that produced the message. */
@@ -97,7 +97,7 @@ interface MessageSourceMap {
 ```ts type-equiv
 /**
  * The kind of information in producer-supplied context, declared by the
- * producer beside its provenance.
+ * producer in the same `MessageSource`.
  *
  * `MessageSource.kind` answers *who produced this*; `form` answers *what kind
  * of thing it is*, and the two axes are deliberately independent — several
@@ -246,12 +246,19 @@ interface LlmFailure {
   readonly providerRetryAfterMs?: number
   /** Opaque provider-issued request identifier for diagnostics. */
   readonly requestId?: ProviderRequestId
+  /**
+   * With code `IMAGE_OFFLOAD_REQUIRED`: how many more of the oldest retained
+   * image occurrences the route needs offloaded before the same request fits
+   * its exact byte accounting. `dsh-compaction-image-offload` records the
+   * selected occurrences in an `image/offload` event and retries the step.
+   */
+  readonly offloadImages?: number
 }
 ```
 
 ## 请求图片定价
 
-提供方对请求图片收取视觉 token 的适配器通过覆写 `LlmAdapter.imageRequestPricing` 声明按路由的定价，消费方经 `ctx.llm.imageRequestPricing(provider, model)` 同步解析。token 计量服务在每次计量时解析路由模型的定价，使 compaction 的压力、保留与选段都按路由请求实际发送的形式为图片历史计价；DeepSeek 适配器复现自身的请求投影（按模型的像素预算、最旧优先 offload），并用官方公布的视觉计量为保留图片定价，已完成请求仍以 provider usage 为权威锚点。
+提供方对请求图片收取视觉 token 的适配器通过覆写 `LlmAdapter.imageRequestPricing` 声明按路由的定价，消费方经 `ctx.llm.imageRequestPricing(provider, model)` 同步解析。token 计量服务在每次计量时解析路由模型的定价，使 compaction 的压力、保留与选段都按路由请求实际发送的形式为图片历史计价；DeepSeek 适配器按模型的请求目标用官方公布的视觉计量为每个保留的出现位置定价，并把日志中的图片省略决策选中的出现位置按其占位文本定价，已完成请求仍以 provider usage 为权威锚点。
 
 ```ts type-equiv
 /**
@@ -280,10 +287,11 @@ interface LlmImageRequestPrice {
 interface LlmImageRequestPricing {
   /**
    * Price every image occurrence of one request projection.
-   * @param images - durable image references in request order, one entry per occurrence.
+   * @param images - surface image blocks in request order, one entry per occurrence; an `offloaded` block
+   *   is priced as its placeholder text.
    * @returns one price per occurrence, aligned by index with `images`.
    */
-  priceImages(images: readonly ImageAttachmentRef[]): readonly LlmImageRequestPrice[]
+  priceImages(images: readonly ImageBlock[]): readonly LlmImageRequestPrice[]
 }
 ```
 

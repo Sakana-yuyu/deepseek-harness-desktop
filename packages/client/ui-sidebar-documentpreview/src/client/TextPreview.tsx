@@ -24,8 +24,9 @@ import { LoadingIndicator } from './LoadingIndicator.tsx'
 import { hostFileOf } from './rpc.ts'
 import type { TextStore } from './store.ts'
 import type { DocumentContent } from './document/contract.ts'
-import { matchingDocumentPreviews } from './document/registry.ts'
+import { binaryDocumentPath, matchingDocumentPreviews } from './document/registry.ts'
 import type { DocumentPreviewDefinition } from './document/registry.ts'
+import { unviewableBinaryPath } from './document/unviewable.ts'
 import { PLAIN_BODY_ID } from './text/index.ts'
 import { loadedPages, lastLineLoaded, scrollToLine } from './text/lines.ts'
 import css from './TextPreview.module.css'
@@ -54,6 +55,23 @@ function usePathClipped(
     observer?.observe(inner)
     return () => { observer?.disconnect() }
   }, [box, text, path, shown])
+}
+
+/** The header's path: directories greyed, the final segment in full ink, faded when clipped. */
+function HeaderPath({ pathRef, pathTextRef, path }: {
+  pathRef: RefObject<HTMLDivElement>
+  pathTextRef: RefObject<HTMLSpanElement>
+  path: string
+}): ReactNode {
+  const { directory, name } = pathPartsOf(path)
+  return (
+    <div ref={pathRef} className={css.path} title={path} data-textpreview-path>
+      <span ref={pathTextRef} className={css.pathText}>
+        {directory !== '' && <span className={css.pathDirectory}>{directory}</span>}
+        <span className={css.pathName}>{name}</span>
+      </span>
+    </div>
+  )
 }
 
 /** Private registration inputs; the framework binds the registry source to useDocumentPreviews. */
@@ -85,11 +103,14 @@ export function TextPreview({
   const file = useMemo(() => hostFileOf(tab.contentId), [tab.contentId])
   const state = useStore(s => s.byTab[tab.id])
   const definitions = useDocumentPreviews(value => value)
+  const unviewable = useMemo(() => unviewableBinaryPath(file.path), [file.path])
   const candidates = useMemo(() => {
     const matched = matchingDocumentPreviews(definitions, file.path)
+    if (matched.length > 0 && binaryDocumentPath(definitions, file.path)) return matched
+    if (matched.length === 0 && unviewable) return matched
     const fallback = definitions.find(definition => definition.id === PLAIN_BODY_ID)
     return fallback === undefined ? matched : [...matched, fallback]
-  }, [definitions, file.path])
+  }, [definitions, file.path, unviewable])
   const selected = candidates.find(candidate => candidate.id === state?.rendererId) ?? candidates[0]
   const mode = selected?.loading
   const current = (state?.mode ?? 'text-pages') === mode ? state : undefined
@@ -173,6 +194,24 @@ export function TextPreview({
     return { kind: 'text', pages: loaded, text: loaded.filter(page => page.lines > 0).map(page => page.text).join('\n'), eof: current.eof }
   }, [mode, loaded, current?.complete, current?.eof])
 
+  // A known binary suffix with no matching renderer never reads: no plain-text
+  // fallback, no viewer control, only the path and the unsupported line.
+  if (selected === undefined && unviewable) {
+    const { name: unsupportedName } = pathPartsOf(displayPath)
+    return (
+      <div className={css.preview} data-textpreview-state="unsupported" data-textpreview-url={tab.contentId}>
+        <div className={css.header}>
+          <HeaderPath pathRef={pathRef} pathTextRef={pathTextRef} path={displayPath} />
+        </div>
+        <div className={css.body} data-textpreview-body>
+          <div className={css.empty} data-textpreview-unsupported>
+            <FileTypeIcon kind={classifyFileType(unsupportedName)} size={36} className={css.emptyIcon} />
+            <p className={css.emptyLine}>{t('unsupportedFile')}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (state === undefined || selected === undefined) {
     return (
       <div className={css.status} data-textpreview-state="loading">
@@ -183,7 +222,7 @@ export function TextPreview({
     )
   }
   const next = loadedThrough + 1
-  const { directory, name } = pathPartsOf(displayPath)
+  const { name } = pathPartsOf(displayPath)
   const observedVersion = meta.value?.version
   const changed = current?.version !== undefined && observedVersion !== undefined
     && observedVersion !== current.version && observedVersion !== current.observedVersion
@@ -230,27 +269,25 @@ export function TextPreview({
           </p>
         )}
       <div className={css.header}>
-        <div ref={pathRef} className={css.path} title={displayPath} data-textpreview-path>
-          <span ref={pathTextRef} className={css.pathText}>
-            {directory !== '' && <span className={css.pathDirectory}>{directory}</span>}
-            <span className={css.pathName}>{name}</span>
-          </span>
-        </div>
-        <Menu
-          open={menuOpen}
-          anchor={(
-            <button type="button" className={clsx(css.tool, css.viewerTool)} aria-label={t('openWith')} title={selected.title()} data-document-viewer-menu onClick={() => { setMenuOpen(value => !value) }}>
-              {selected.title()}
-            </button>
+        <HeaderPath pathRef={pathRef} pathTextRef={pathTextRef} path={displayPath} />
+        {candidates.length > 1
+          && (
+            <Menu
+              open={menuOpen}
+              anchor={(
+                <button type="button" className={clsx(css.tool, css.viewerTool)} aria-label={t('openWith')} title={selected.title()} data-document-viewer-menu onClick={() => { setMenuOpen(value => !value) }}>
+                  {selected.title()}
+                </button>
+              )}
+              items={candidates.map(candidate => ({ id: candidate.id, label: candidate.title() }))}
+              selectedId={selected.id}
+              onSelect={(id) => { actions.selected(tab.id, id); setMenuOpen(false) }}
+              onClose={() => { setMenuOpen(false) }}
+              align="end"
+              portal
+              dense
+            />
           )}
-          items={candidates.map(candidate => ({ id: candidate.id, label: candidate.title() }))}
-          selectedId={selected.id}
-          onSelect={(id) => { actions.selected(tab.id, id); setMenuOpen(false) }}
-          onClose={() => { setMenuOpen(false) }}
-          align="end"
-          portal
-          dense
-        />
         {selected.wrap === true && (
           // The tooltip names the action while the stable aria name and
           // `aria-pressed` expose the control and its current state.
@@ -295,7 +332,7 @@ export function TextPreview({
         }}
       >
         {!hasContent && current?.failure === undefined && (
-          <LoadingIndicator className={css.statusLine} label={t('loading')} />
+          <LoadingIndicator className={clsx(css.statusLine, css.bodyLoading)} label={t('loading')} />
         )}
         {content !== undefined && renderSlot('sidebar.right.tab.document', {
           resourceAddress: tab.contentId, content, wrap: state.wrap, scrollportRef: bindScrollport,

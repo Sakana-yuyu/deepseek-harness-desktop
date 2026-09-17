@@ -195,7 +195,6 @@ describe('dsh-subagent-spawn-in-process', () => {
     const published: string[] = []
     ctx.on('session/created', () => void published.push('session/created'))
     ctx.on('agent/created', () => void published.push('agent/created'))
-    ctx.on('agent/session-start', () => void published.push('agent/session-start'))
     ctx.on('subagent/start', () => void published.push('subagent/start'))
     ctx.on('subagent/end', () => void published.push('subagent/end'))
     const controller = new AbortController()
@@ -469,7 +468,6 @@ describe('dsh-subagent-spawn-in-process', () => {
     const published: string[] = []
     ctx.on('session/created', () => void published.push('session/created'))
     ctx.on('agent/created', () => void published.push('agent/created'))
-    ctx.on('agent/session-start', () => void published.push('agent/session-start'))
     await expect(start(ctx, 'spawn', {
       prompt: [{ type: 'text', text: 'do X' }],
       parent: parentHandle.agent,
@@ -488,7 +486,6 @@ describe('dsh-subagent-spawn-in-process', () => {
     const published: string[] = []
     ctx.on('session/created', () => void published.push('session/created'))
     ctx.on('agent/created', () => void published.push('agent/created'))
-    ctx.on('agent/session-start', () => void published.push('agent/session-start'))
     let teardownStarted = false
     ctx.on('internal/plugin', (fiber) => {
       if (teardownStarted || fiber.name !== 'scope') return

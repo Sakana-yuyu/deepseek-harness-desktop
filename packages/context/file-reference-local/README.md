@@ -63,7 +63,7 @@ This section explains the design of the provider; the observable behavior is cov
 
 ### Design concept
 
-The provider maintains one reusable `WorkspaceFileSearch` per agent, rooted at that session's `cwd`. Directory-scoped queries (`a/b/...`) list live directory state, while bare fuzzy queries share one bounded recursive traversal. Only a workspace's first bare query waits for that traversal; a `tool/result` event marks the settled entries stale, and the next bare query serves them while the replacement builds. The model guidance is a per-agent prompt section contributed only while the addressed agent has a `read` tool; agent disposal releases both the index and the prompt fiber.
+The provider maintains one reusable `WorkspaceFileSearch` per agent, rooted at that session's `cwd`. Directory-scoped queries (`a/b/...`) list live directory state, while bare fuzzy queries share one bounded recursive traversal. Only a workspace's first bare query waits for that traversal; a `tool/result` event marks the settled entries stale, and the next bare query serves them while the replacement builds. The model guidance is a per-agent prompt section contributed only while the addressed agent has a `read` tool; creation awaits prompt installation and rolls back on failure; agent disposal releases both the index and the prompt fiber.
 
 ### Source map
 
