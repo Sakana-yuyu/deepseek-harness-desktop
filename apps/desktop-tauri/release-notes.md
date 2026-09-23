@@ -1,21 +1,25 @@
-# DeepSeek Harness Desktop 0.1.6-alpha.1-0.1
+# DeepSeek Harness Desktop 0.1.7-rc.1-0.1
 
 ## 中文
 
-- 同步上游发行标签 `dsh-v0.1.6-alpha.1`，并包含其后已合入上游 `master` 的启动性能修复。
-- 包含上游运行时解析、启动性能、Web 交互和测试修复；延迟可选原生依赖与 Web 客户端组合，减少启动阶段工作。
+- 同步上游发行标签 `dsh-v0.1.7-rc.1`，上游进入 rc 阶段。
+- 插件兼容性收紧：与 DSH 运行时版本不兼容的 bundle 会被拒绝安装，兼容性拒绝以类型化原因呈现；确需豁免时通过 `dsh plugin allow-version` 按精确版本批准。
+- 会话界面：工具行按准备、开始、结果三个阶段呈现，新增四种工作详情模式；图片链接悬停预览与内联展开。
+- Web 交互：只读电子表格支持触控板双轴平移与标签页手势，缩放后 PDF 页面重绘，Team 面板交互改进，模型 ID 以等宽字体显示。
 - 桌面壳无行为变化：保留独立 WebView 认证、自定义标题栏、托盘、通知与签名更新。
 
-更新前请结束正在运行的任务并备份 Harness 主目录。上游仍为 alpha 版本；会话写入可能生成新的版本文件，旧版本无法读取新版本新增的数据。
+更新前请结束正在运行的任务并备份 Harness 主目录。上游进入 rc 阶段但尚未稳定；会话写入可能生成新的版本文件，旧版本无法读取新版本新增的数据。
 
 包含 Windows x64/x86 NSIS、macOS Intel/Apple Silicon DMG，以及 Linux x64 AppImage/deb。更新产物使用 Tauri 签名，尚无操作系统代码签名或 macOS notarization。
 
 ## English
 
-- Sync upstream release tag `dsh-v0.1.6-alpha.1`, including the startup-performance fix subsequently merged to upstream `master`.
-- Includes upstream runtime-resolution, startup-performance, Web interaction, and test fixes; optional native dependencies and Web client assembly are deferred to reduce startup work.
+- Sync upstream release tag `dsh-v0.1.7-rc.1`; upstream has entered the rc stage.
+- Plugin compatibility is now enforced: bundles incompatible with the DSH runtime version are refused with typed reasons; grant exact-version exemptions through `dsh plugin allow-version` when necessary.
+- Session UI: tool rows render through preparing, start, and result stages with four new work detail modes; image links preview on hover and expand inline.
+- Web interactions: read-only spreadsheets support two-axis trackpad panning and tab gestures, PDF pages redraw after zoom, the Team panel gains interaction refinements, and model IDs render in monospace.
 - No desktop-shell behavior change: the separate WebView authentication, window controls, tray, notifications, and signed updates are unchanged.
 
-Finish running tasks and back up the Harness home before upgrading. Upstream remains an alpha release. Session writes may create a new format generation; older releases cannot read data introduced by the new version.
+Finish running tasks and back up the Harness home before upgrading. Upstream is in the rc stage but not yet stable. Session writes may create a new format generation; older releases cannot read data introduced by the new version.
 
 Includes Windows x64/x86 NSIS, macOS Intel/Apple Silicon DMG, and Linux x64 AppImage/deb. Update artifacts carry Tauri signatures but lack operating-system code signing and macOS notarization.
