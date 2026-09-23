@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
-import { buildTrimmedWorkspaceYaml } from './bundle-harness-source.mjs'
+import { buildTrimmedWorkspaceYaml, stripUnbundledWorkspaceDependencies } from './bundle-harness-source.mjs'
 
 test('buildTrimmedWorkspaceYaml keeps upstream patch and build declarations verbatim', () => {
   const source = `packages:
@@ -58,4 +61,52 @@ linkWorkspacePackages: true
 
 test('buildTrimmedWorkspaceYaml rejects a workspace without a packages block', () => {
   assert.throws(() => buildTrimmedWorkspaceYaml('linkWorkspacePackages: true\n'), /packages/)
+})
+
+test('stripUnbundledWorkspaceDependencies drops only workspace refs to absent packages', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-bundle-strip-'))
+  try {
+    const presentDir = join(root, 'packages', 'core', 'present')
+    const consumerDir = join(root, 'packages', 'core', 'consumer')
+    const cliDir = join(root, 'apps', 'cli')
+    await mkdir(presentDir, { recursive: true })
+    await mkdir(consumerDir, { recursive: true })
+    await mkdir(cliDir, { recursive: true })
+    await writeFile(
+      join(presentDir, 'package.json'),
+      `${JSON.stringify({ name: '@deepseek-ai/dsh-present' }, null, 2)}\n`,
+    )
+    const consumerPath = join(consumerDir, 'package.json')
+    await writeFile(
+      consumerPath,
+      `${JSON.stringify({
+        name: '@deepseek-ai/dsh-consumer',
+        dependencies: {
+          '@deepseek-ai/dsh-present': 'workspace:*',
+          '@deepseek-ai/dsh-experimental-missing': 'workspace:*',
+          'regular-dep': '^1.0.0',
+        },
+        optionalDependencies: { '@deepseek-ai/dsh-experimental-optional-missing': 'workspace:*' },
+        peerDependencies: { '@deepseek-ai/dsh-experimental-peer-missing': 'workspace:*' },
+      }, null, 2)}\n`,
+    )
+    await writeFile(
+      join(cliDir, 'package.json'),
+      `${JSON.stringify({ name: '@deepseek-ai/dsh-cli', dependencies: { '@deepseek-ai/dsh-present': 'workspace:*' } }, null, 2)}\n`,
+    )
+
+    stripUnbundledWorkspaceDependencies(root)
+
+    const stripped = JSON.parse(await readFile(consumerPath, 'utf8'))
+    assert.deepEqual(stripped.dependencies, {
+      '@deepseek-ai/dsh-present': 'workspace:*',
+      'regular-dep': '^1.0.0',
+    })
+    assert.equal(stripped.optionalDependencies, undefined)
+    assert.equal(stripped.peerDependencies, undefined)
+    const cli = JSON.parse(await readFile(join(cliDir, 'package.json'), 'utf8'))
+    assert.deepEqual(cli.dependencies, { '@deepseek-ai/dsh-present': 'workspace:*' })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })

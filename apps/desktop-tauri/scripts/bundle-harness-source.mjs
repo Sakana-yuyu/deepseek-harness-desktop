@@ -190,6 +190,71 @@ function stripDevDependencies(root) {
   walk(root)
 }
 
+/**
+ * Collect the `name` of every workspace member copied into the bundle.
+ * @param {string} root
+ * @returns {Set<string>}
+ */
+function collectBundledPackageNames(root) {
+  const names = new Set()
+  /** @param {string} dir */
+  const walk = dir => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (skipDirNames.has(entry.name)) continue
+        walk(path)
+        continue
+      }
+      if (entry.name !== 'package.json') continue
+      const pkg = JSON.parse(readFileSync(path, 'utf8'))
+      if (typeof pkg.name === 'string') names.add(pkg.name)
+    }
+  }
+  walk(root)
+  return names
+}
+
+/**
+ * Drop dependency entries that use the workspace protocol but name a package
+ * the trimmed tree does not contain (skipped groups such as `experimental`).
+ * pnpm refuses `workspace:*` specs whose target is absent, so first-run
+ * `pnpm install --prod` would otherwise fail on upstream manifests that
+ * reference packages the desktop bundle deliberately leaves out.
+ * @param {string} root
+ */
+export function stripUnbundledWorkspaceDependencies(root) {
+  const present = collectBundledPackageNames(root)
+  const sections = ['dependencies', 'optionalDependencies', 'peerDependencies']
+  /** @param {string} dir */
+  const walk = dir => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (skipDirNames.has(entry.name)) continue
+        walk(path)
+        continue
+      }
+      if (entry.name !== 'package.json') continue
+      const pkg = JSON.parse(readFileSync(path, 'utf8'))
+      let changed = false
+      for (const section of sections) {
+        const deps = pkg[section]
+        if (deps === undefined) continue
+        for (const [name, spec] of Object.entries(deps)) {
+          if (spec.startsWith('workspace:') && !present.has(name)) {
+            delete deps[name]
+            changed = true
+          }
+        }
+        if (Object.keys(deps).length === 0) delete pkg[section]
+      }
+      if (changed) writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`)
+    }
+  }
+  walk(root)
+}
+
 function main() {
 assertBuiltArtifacts()
 rmSync(outRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
@@ -234,6 +299,7 @@ const bundlePkg = {
 writeFileSync(join(outRoot, 'package.json'), `${JSON.stringify(bundlePkg, null, 2)}\n`)
 
 stripDevDependencies(outRoot)
+stripUnbundledWorkspaceDependencies(outRoot)
 
 const manifest = {
   harnessVersion: rootPkg.version,

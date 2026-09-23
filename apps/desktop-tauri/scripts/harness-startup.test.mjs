@@ -44,7 +44,7 @@ test('裁剪包在全新主目录启动，并通过令牌交换访问受保护�
     assert.equal((await fetch(base)).status, 401)
     const exchange = await fetch(startup, { redirect: 'manual' })
     assert.equal(exchange.status, 303)
-    assert.equal(exchange.headers.get('location'), '/')
+    assert.equal(exchange.headers.get('location'), './')
     const cookie = exchange.headers.get('set-cookie')
     assert.match(cookie, /HttpOnly; SameSite=Strict/)
     const page = await fetch(base, { headers: { cookie: cookie.split(';')[0] } })
