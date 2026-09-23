@@ -41,6 +41,7 @@ const testToolSignal = new AbortController().signal
 
 /** An in-memory fake provider; a test can arm a rejection on any primitive. */
 class FakeFs extends FileSystem {
+  override watch(): never { throw new Error('Fixture does not support watching') }
   files = new Map<string, string>()
   rejectWith?: FsError
   writeIntents: (FsWriteIntent | undefined)[] = []
@@ -640,7 +641,7 @@ describe('result-time contextual diff (meta + presentResult)', () => {
     await call(ctx, 'read', { file_path: 'a.txt' }, { session })
     const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'a\nb\nc\nNEW\nd\ne\nf\n' }, { session })
     expect(result.isError).toBe(false)
-    expect(result.meta).toEqual({ diffs: [{ path: 'a.txt', oldText: 'a\nb\nc\nOLD\nd\ne\nf', newText: 'a\nb\nc\nNEW\nd\ne\nf' }] })
+    expect(result.meta).toEqual({ operation: 'update', diffs: [{ path: 'a.txt', oldText: 'a\nb\nc\nOLD\nd\ne\nf', newText: 'a\nb\nc\nNEW\nd\ne\nf' }] })
     const view = ctx.tools.get('write')?.presentResult?.({ file_path: 'a.txt', content: 'x' }, result)
     expect(view).toEqual({ card: 'diff', title: 'Write a.txt', diffs: [{ path: 'a.txt', oldText: 'a\nb\nc\nOLD\nd\ne\nf', newText: 'a\nb\nc\nNEW\nd\ne\nf' }] })
   })
@@ -652,7 +653,7 @@ describe('result-time contextual diff (meta + presentResult)', () => {
     const session = { header: {} }
     const result = await call(ctx, 'write', { file_path: 'new.txt', content: 'fresh\n' }, { session })
     expect(result.isError).toBe(false)
-    expect(result.meta).toEqual({ diffs: [] })
+    expect(result.meta).toEqual({ operation: 'create', diffs: [] })
     const view = ctx.tools.get('write')?.presentResult?.({ file_path: 'new.txt', content: 'fresh\n' }, result)
     expect(view).toEqual({ card: 'diff', title: 'Write new.txt', diffs: [{ path: 'new.txt', oldText: null, newText: 'fresh\n' }] })
   })
@@ -664,7 +665,8 @@ describe('result-time contextual diff (meta + presentResult)', () => {
     await call(ctx, 'read', { file_path: 'a.txt' }, { session })
     const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'same\n' }, { session })
     expect(result.isError).toBe(false)
-    expect(result.meta).toEqual({ diffs: [] })
+    // The operation lets a consumer tell this unchanged overwrite from a create with the same empty hunk list.
+    expect(result.meta).toEqual({ operation: 'update', diffs: [] })
     const view = ctx.tools.get('write')?.presentResult?.({ file_path: 'a.txt', content: 'same\n' }, result)
     expect(view).toEqual({ card: 'diff', title: 'Write a.txt', diffs: [{ path: 'a.txt', oldText: null, newText: 'same\n' }] })
   })
@@ -940,6 +942,17 @@ describe('sandbox escalation API (write/edit)', () => {
       mode: 'danger-full-access',
       workspaceRoot: '/session-project',
       sessionId: SessionId('sess-fs-esc'),
+    }])
+  })
+
+  it.each(['workspace-write', 'danger-full-access'] as const)('writes under repeated %s without approval', async (mode) => {
+    const { ctx, fs } = await setupConfining()
+    const result = await call(ctx, 'write', {
+      file_path: 'a.txt', content: 'x', sandbox_permissions: mode, justification: 'use the current permissions',
+    }, escalationAgent([{ type: 'sandbox/mode', data: { mode } }]))
+    expect(result.isError).toBe(false)
+    expect(fs.stamped).toEqual([{
+      mode, workspaceRoot: '/session-project', sessionId: SessionId('sess-fs-esc'),
     }])
   })
 

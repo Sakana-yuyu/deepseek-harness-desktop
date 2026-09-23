@@ -8,7 +8,7 @@ import type {} from '@deepseek-ai/dsh-api-terminal-controller'
 import type { SubprocessTerminalHandle } from '@deepseek-ai/dsh-subprocess'
 import { createProcessInspector, type ProcessIdentity } from '@deepseek-ai/dsh-subprocess-local/src/process-inspector.ts'
 import { compareOrRefreshGolden, launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { openSettings, connectFreshWorkspace, saveFailureShot } from './support.ts'
 
 const expected = fileURLToPath(new URL('./expected/sidebar-terminal/running.expected.md', import.meta.url))
 const shots = fileURLToPath(new URL('../../../.artifacts/screenshots/sidebar-terminal/', import.meta.url))
@@ -28,8 +28,26 @@ async function command(page: Page, text: string): Promise<void> {
   await page.keyboard.press('Enter')
 }
 
+async function controlTransport(page: Page) {
+  let blocked = false
+  let close: (() => Promise<void>) | undefined
+  await page.routeWebSocket('**/api/remote.mux', async (socket) => {
+    if (blocked) { await socket.close(); return }
+    const upstream = socket.connectToServer()
+    close = async () => { await upstream.close(); await socket.close() }
+  })
+  return {
+    async disconnect() {
+      blocked = true
+      if (close === undefined) throw new Error('Window did not establish its Remote mux')
+      await close()
+    },
+    reconnect() { blocked = false },
+  }
+}
+
 async function selectTerminalTheme(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await openSettings(page, 'en')
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   const [response] = await Promise.all([
     page.waitForResponse(candidate => new URL(candidate.url()).pathname === '/api/settings/mutate' && candidate.request().method() === 'POST'),
@@ -59,7 +77,8 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
   beforeEach(async () => {
     scaffold = await launchWebScaffold({ extraOverlayPath: fileURLToPath(new URL('./fixtures/sidebar-terminal.patch.yml', import.meta.url)) })
     browser = await chromium.launch()
-    page = await newEnglishPage(browser)
+    const context = await browser.newContext({ viewport: { width: 1680, height: 1000 }, locale: 'en-US', timezoneId: 'Asia/Shanghai' })
+    page = await context.newPage()
     tripwire = watchConsole(page)
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -271,14 +290,26 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
     await command(page, "printf 'SIZE:'; stty size")
     await expect.poll(async () => await screen.innerText()).toContain(`SIZE:${terminals()[0]!.rows} ${terminals()[0]!.cols}`)
     await page.screenshot({ path: `${shots}/fullscreen.png`, fullPage: true })
+    const tabIds = await page.locator('[data-dockkit-tab]').evaluateAll(tabs => tabs.map(tab => tab.getAttribute('data-dockkit-tab')))
     await page.reload({ waitUntil: 'load' })
     await page.locator('[data-dockkit-tab]').filter({ hasText: 'Development' }).waitFor({ timeout: 15_000 })
     await expect.poll(async () => await page.locator('[data-dockkit-tab-title]').allInnerTexts()).toEqual(['Development', 'bash'])
     expect(terminals()).toHaveLength(2)
     expect(alive(firstProcess)).toBe(true)
     expect(alive(secondProcess)).toBe(true)
-    await expect.poll(async () => await screen.innerText()).toContain(`SECOND_PID:${secondPid}`)
+    expect(await page.locator('[data-dockkit-tab]').evaluateAll(tabs => tabs.map(tab => tab.getAttribute('data-dockkit-tab')))).toEqual(tabIds)
+    await expect.poll(async () => await screen.innerText()).toContain('PERSIST:xterm-256color')
+    await page.getByRole('button', { name: 'Exit fullscreen', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Collapse right sidebar', exact: true }).click()
+    await page.reload({ waitUntil: 'load' })
+    await page.locator('[data-sidebar-right-expand]').waitFor()
+    expect(await page.locator('[data-sidebar-terminal]:visible').count()).toBe(0)
+    expect(terminals()).toHaveLength(2)
+    await page.locator('[data-sidebar-right-expand]').click()
+    await expect.poll(async () => await screen.innerText()).toContain('PERSIST:xterm-256color')
     const secondTab = page.locator('[data-dockkit-tab]').filter({ hasText: 'bash' })
+    await secondTab.click()
+    await expect.poll(async () => await screen.innerText()).toContain(`SECOND_PID:${secondPid}`)
     await secondTab.hover()
     await secondTab.locator('[data-dockkit-tab-close]').click()
     await expect.poll(async () => await secondTab.count()).toBe(0)
@@ -366,6 +397,133 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
     await expect.poll(() => terminals().length).toBe(1)
     await openTerminal(page)
     await expect.poll(() => terminals().filter(info => info.state === 'running').length).toBe(1)
+    expect(tripwire.pageErrors).toEqual([])
+  })
+
+  it('keeps new terminals independent when two same-origin windows mint the same tab id', async () => {
+    onTestFailed(() => saveFailureShot(page, 'sidebar-terminal-shared-storage'))
+    const second = await page.context().newPage()
+    const secondErrors = watchConsole(second)
+    await second.goto(page.url(), { waitUntil: 'load' })
+    await second.getByText('Ready for terminal input.').waitFor()
+    await openTerminal(page)
+    const firstTab = await page.locator('[data-dockkit-tab][aria-selected="true"]').getAttribute('data-dockkit-tab')
+    const firstProcess = processIdentity(0)
+    // Busy activity isolates layout recovery from unattended idle reclamation.
+    vi.spyOn(handles[0]!, 'inspectActivity').mockResolvedValue({ state: 'busy', revision: 1 })
+    await command(page, "printf 'WINDOW_A\\n'")
+    await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('WINDOW_A')
+    await openTerminal(second)
+    const secondTab = await second.locator('[data-dockkit-tab][aria-selected="true"]').getAttribute('data-dockkit-tab')
+    expect(secondTab).toBe(firstTab)
+    expect(handles).toHaveLength(2)
+    const secondProcess = processIdentity(1)
+    expect(secondProcess.pid).not.toBe(firstProcess.pid)
+    await command(second, "printf 'WINDOW_B\\n'")
+    await expect.poll(() => second.locator('.xterm-rows:visible').innerText()).toContain('WINDOW_B')
+    expect(await second.locator('.xterm-rows:visible').innerText()).not.toContain('WINDOW_A')
+    expect(await page.locator('.xterm-rows:visible').innerText()).not.toContain('WINDOW_B')
+    const bindings = () => page.evaluate(() => Object.keys(localStorage)
+      .filter(key => key.startsWith('dsh.terminal.binding.v1.')).map(key => localStorage.getItem(key)))
+    const saved = await bindings()
+    expect(saved).toHaveLength(2)
+    const selected = second.locator('[data-dockkit-tab][aria-selected="true"]')
+    await selected.hover()
+    await selected.locator('[data-dockkit-tab-close]').click()
+    await expect.poll(() => alive(secondProcess)).toBe(false)
+    expect(alive(firstProcess)).toBe(true)
+    await expect.poll(() => bindings()).toHaveLength(1)
+    expect(saved).toContain((await bindings())[0])
+    await page.reload({ waitUntil: 'load' })
+    await page.getByText('Ready for terminal input.').waitFor()
+    // The second window saved an empty layout; disabled recovery does not recreate the first window's tab.
+    expect(await page.locator('[data-sidebar-terminal]:visible').count()).toBe(0)
+    expect(alive(firstProcess)).toBe(true)
+    expect(handles).toHaveLength(2)
+    expect(tripwire.pageErrors).toEqual([])
+    expect(secondErrors.pageErrors).toEqual([])
+  })
+
+  it('holds a collapsed layout across windows and reclaims only after the last transport disappears', async () => {
+    onTestFailed(() => saveFailureShot(page, 'sidebar-terminal-window-holds'))
+    const retains = vi.spyOn(scaffold.ctx.terminalController, 'retain')
+    await openTerminal(page)
+    const original = processIdentity(0)
+    const sessionId = scaffold.ctx.agents.list()[0]!.id
+    // Shell activity is exercised with real PTYs in the provider tests; this scenario isolates window ownership.
+    vi.spyOn(handles[0]!, 'inspectActivity').mockResolvedValue({ state: 'idle', revision: 1 })
+    await page.getByRole('button', { name: 'Collapse right sidebar', exact: true }).click()
+    const second = await page.context().newPage()
+    const transport = await controlTransport(second)
+    await second.goto(page.url(), { waitUntil: 'load' })
+    await second.locator('[data-sidebar-right-expand]').waitFor()
+    await expect.poll(() => retains.mock.calls.filter(call => !call[2].aborted).length).toBe(2)
+    await page.close()
+    page = second
+    tripwire = watchConsole(page)
+    await expect.poll(() => retains.mock.calls.filter(call => !call[2].aborted).length).toBe(1)
+    const disconnectedAt = performance.now()
+    await expect.poll(() => performance.now() - disconnectedAt, { timeout: 10_000 }).toBeGreaterThan(2500)
+    expect(alive(original)).toBe(true)
+    expect(await page.locator('[data-sidebar-terminal]:visible').count()).toBe(0)
+    await page.context().setOffline(true)
+    await transport.disconnect()
+    await expect.poll(() => retains.mock.calls.every(call => call[2].aborted), { timeout: 15_000 }).toBe(true)
+    await expect.poll(() => scaffold.ctx.terminalController.list(sessionId), { timeout: 15_000 }).toEqual([])
+    expect(alive(original)).toBe(false)
+    transport.reconnect()
+    await page.context().setOffline(false)
+    await page.reload({ waitUntil: 'load' })
+    await page.locator('[data-sidebar-right-expand]').click()
+    const terminal = page.locator('[data-sidebar-terminal]')
+    let unavailableSnapshot = ''
+    // Mounting can refresh a failed recovered view; readiness and comparison use the same DOM sample.
+    await expect.poll(async () => {
+      unavailableSnapshot = await terminal.ariaSnapshot()
+      return unavailableSnapshot
+    }).toContain('no longer exists')
+    expect(handles).toHaveLength(1)
+    const unavailable = fileURLToPath(new URL('./expected/sidebar-terminal/unavailable.expected.md', import.meta.url))
+    await compareOrRefreshGolden(unavailable, unavailableSnapshot, webSnapshotMode())
+    await terminal.screenshot({ path: `${shots}/unavailable.png`, animations: 'disabled' })
+    const tabCount = await page.locator('[data-dockkit-tab]').count()
+    const create = terminal.getByRole('button', { name: 'New terminal', exact: true })
+    await create.focus()
+    await page.keyboard.press('Enter')
+    await expect.poll(() => handles.length).toBe(2)
+    await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('bash-')
+    expect(await page.locator('[data-dockkit-tab]').count()).toBe(tabCount)
+    expect(scaffold.ctx.terminalController.list(sessionId)).toHaveLength(1)
+    expect(alive(processIdentity(1))).toBe(true)
+    await command(page, "printf 'NEW_TERMINAL_READY\\n'")
+    await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('NEW_TERMINAL_READY')
+    expect(tripwire.pageErrors).toEqual([])
+  })
+
+  it('offers reconnection after transport loss and resumes the same process without a new terminal', async () => {
+    onTestFailed(() => saveFailureShot(page, 'sidebar-terminal-reconnect'))
+    await openTerminal(page)
+    const original = processIdentity(0)
+    await command(page, "printf 'RECONNECT_READY\\n'")
+    await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('RECONNECT_READY')
+    const transport = await controlTransport(page)
+    await page.reload({ waitUntil: 'load' })
+    await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('RECONNECT_READY')
+    await transport.disconnect()
+    const reconnect = page.getByRole('button', { name: 'Reconnect', exact: true })
+    await reconnect.waitFor()
+    expect(await page.getByRole('alert').count()).toBe(0)
+    expect(alive(original)).toBe(true)
+    const disconnected = fileURLToPath(new URL('./expected/sidebar-terminal/disconnected.expected.md', import.meta.url))
+    await compareOrRefreshGolden(disconnected, await page.locator('[data-sidebar-terminal]').getByRole('status').ariaSnapshot(), webSnapshotMode())
+    await page.screenshot({ path: `${shots}/disconnected.png`, fullPage: true })
+    await reconnect.click()
+    transport.reconnect()
+    await page.locator('[data-sidebar-terminal]').getByRole('status').waitFor({ state: 'hidden' })
+    await command(page, "printf 'RECONNECTED_INPUT\\n'")
+    await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('RECONNECTED_INPUT')
+    expect(handles).toHaveLength(1)
+    expect(alive(original)).toBe(true)
     expect(tripwire.pageErrors).toEqual([])
   })
 

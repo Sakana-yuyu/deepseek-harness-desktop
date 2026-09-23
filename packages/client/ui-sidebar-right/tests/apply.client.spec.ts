@@ -10,6 +10,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { apply, inject } from '../src/client/index.ts'
@@ -18,6 +19,7 @@ import { apply as hostApply } from '../src/index.ts'
 import { SidebarRightController } from '../src/client/service.ts'
 import { SidebarRightTabRegistry } from '../src/client/tab-registry.ts'
 import type { createSidebarRightStore } from '../src/client/stores.ts'
+import * as sidebarStores from '../src/client/stores.ts'
 import { RightbarSeat } from '../src/client/shell/SidebarRight.tsx'
 import { RightbarRoot } from '../src/client/shell/RightbarRoot.tsx'
 import { ExpandButton } from '../src/client/shell/ExpandButton.tsx'
@@ -64,6 +66,8 @@ async function boot() {
   ctx.provide('locale', locale as never)
   ctx.provide('layout', layout as never)
   ctx.provide('resources', resources as never)
+  ctx.provide('sessions', { retain: vi.fn() } as never)
+  ctx.provide('uiSession', { adapter: { current: createSnapshotStore({ key: undefined }) } } as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   const seat = (name: string): Recorded => {
@@ -136,6 +140,7 @@ describe('ui-sidebar-right apply', () => {
     // store instance is minted here from the handle the registration declared.
     const handle = seat('rightbar.session').store as ReturnType<typeof createSidebarRightStore>
     const instance = handle.create()
+    instance.clearPersisted()
     const release = injected.bindService({ sessionId: SESSION, actions: instance.actions, surfaces: {}, canSplitPane: () => true })
     injected.openTab('guide', { revealIfOpened: false })
     const surface = instance.getSnapshot().bySession[SESSION]
@@ -167,6 +172,53 @@ describe('ui-sidebar-right apply', () => {
     occurrence.tabActions.close()
     expect(instance.getSnapshot().bySession[SESSION]?.layout.tabs[guide.id]).toBeUndefined()
     expect(occurrence.signal.aborted).toBe(true)
+    expect(ctx.sidebarRight.openTabs.getSnapshot().length).toBeGreaterThan(0)
+    instance.clearPersisted()
+    expect(ctx.sidebarRight.openTabs.getSnapshot()).toEqual([])
+  })
+
+  it('releases replaced store adoptions once and keeps the latest store for each Session', async () => {
+    const originalFactory = sidebarStores.createSidebarRightStore
+    const stops: Array<ReturnType<typeof vi.fn<() => void>>> = []
+    const factory = vi.spyOn(sidebarStores, 'createSidebarRightStore').mockImplementation((seed) => {
+      const handle = originalFactory(seed)
+      return {
+        ...handle,
+        create(scopeKey) {
+          const instance = handle.create(scopeKey)
+          return {
+            ...instance,
+            subscribe(listener) {
+              const stop = vi.fn(instance.subscribe(listener))
+              stops.push(stop)
+              return stop
+            },
+          }
+        },
+      }
+    })
+    let b: Awaited<ReturnType<typeof boot>> | undefined
+    try {
+      b = await boot()
+      const handle = b.seat('rightbar.session').store as ReturnType<typeof createSidebarRightStore>
+      const other = 's-other' as SessionId
+      handle.create(SESSION)
+      handle.create(other)
+      handle.create(SESSION)
+      handle.create(other)
+      const current = handle.create(SESSION)
+      const currentOther = handle.create(other)
+      expect(stops.map(stop => stop.mock.calls.length)).toEqual([1, 1, 1, 1, 0, 0])
+      current.actions.setExpanded(SESSION, true)
+      currentOther.actions.setExpanded(other, true)
+      expect(new Set(b.ctx.sidebarRight.openTabs.getSnapshot().map(tab => tab.sessionId)))
+        .toEqual(new Set([SESSION, other]))
+      await b.fiber.dispose()
+      expect(stops.map(stop => stop.mock.calls.length)).toEqual([1, 1, 1, 1, 1, 1])
+    } finally {
+      await b?.ctx.fiber.dispose()
+      factory.mockRestore()
+    }
   })
 
   it('hands the guide body the registry\'s entry boxes, observable', async () => {

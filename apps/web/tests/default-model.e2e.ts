@@ -111,10 +111,10 @@ describe('web e2e: the composer model switch is the default for later sessions',
     // The switch is what sets the default: the shared Agent-route settings section
     // now names it, beside the provider profiles the Models page writes.
     await expect.poll(
-      async () => readFile(join(scaffold.harnessHome, 'settings.yaml'), 'utf8'),
+      async () => readFile(join(scaffold.harnessHome, 'profiles', 'scaffold', 'cordis.patch.yml'), 'utf8'),
       { timeout: 10_000 },
-    ).toContain('agent-default-model:')
-    const document = await readFile(join(scaffold.harnessHome, 'settings.yaml'), 'utf8')
+    ).toContain('id: agent-default-model')
+    const document = await readFile(join(scaffold.harnessHome, 'profiles', 'scaffold', 'cordis.patch.yml'), 'utf8')
     expect(document).toContain(`provider: ${ROUTE}`)
     expect(document).toContain(`model: ${MODEL}`)
 

@@ -45,7 +45,7 @@ describe('WorkspaceBrowser.module.css list', () => {
 
   it('counts the themed scrollbar inside the shell trailing inset', () => {
     expect(root?.get('--dsh-session-list-edge-inset')).toBe('var(--dsh-sidebar-inline-padding)')
-    expect(root?.get('--dsh-session-list-scrollbar-width')).toBe('8px')
+    expect(root?.get('--dsh-session-list-scrollbar-width')).toBe('5px')
     expect(root?.get('--dsh-session-list-scrollbar-offset')).toBe('2px')
     expect(root?.get('padding-right')).toBe('var(--dsh-session-list-edge-inset)')
     expect(listArea?.get('margin-left')).toBe('-4px')
@@ -106,6 +106,22 @@ describe('WorkspaceBrowser.module.css list', () => {
     expect(rowDeclarations('.searchResultRow')?.get('min-height')).toBe('48px')
     expect(rowDeclarations('.sessionRow.selected')?.get('background'))
       .toBe('var(--dsw-alias-interactive-bg-hover)')
+  })
+
+  it('marquees a clipped session title on row hover', () => {
+    // The crawl itself is scripted in Rows.tsx frame by frame, so the title
+    // declares no scroll-behavior; the stylesheet keeps the hovered cell
+    // unclipped and fades whichever edges cut text mid-travel, on the title
+    // span itself so the status slot beside it keeps its full color.
+    expect(rowDeclarations('.sessionRow .title')?.get('flex')).toBe('1')
+    expect(rowDeclarations('.sessionRow .title')?.get('scroll-behavior')).toBeUndefined()
+    expect(rowDeclarations('.sessionRow:hover .title')?.get('text-overflow')).toBe('clip')
+    expect(rowDeclarations('.sessionRow .title[data-scrolled]')?.get('mask-image'))
+      .toBe('linear-gradient(to right, transparent, #000 12px)')
+    expect(rowDeclarations('.sessionRow .title[data-clipped]')?.get('mask-image'))
+      .toBe('linear-gradient(to left, transparent, #000 12px)')
+    expect(rowDeclarations('.sessionRow .title[data-scrolled][data-clipped]')?.get('mask-image'))
+      .toBe('linear-gradient(to right, transparent, #000 12px, #000 calc(100% - 12px), transparent)')
   })
 
   it('pins both rail controls to the shared left anchor during the column slide', () => {

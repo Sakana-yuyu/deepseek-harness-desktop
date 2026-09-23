@@ -70,6 +70,7 @@ export class TerminalView {
    * @param id - Host terminal identity, reused when recovering an item from its Session list.
    * @param createWhenMissing - allow allocation only for a new tab, never a listed terminal.
    * @param shellPath - explicit shell chosen at the guide; omission uses the remembered available shell.
+   * @param retain - window hold acknowledgement required before output attachment.
    */
   constructor(
     private readonly sessionId: SessionId,
@@ -78,6 +79,7 @@ export class TerminalView {
     readonly id: WebTerminalId,
     private readonly createWhenMissing = true,
     private readonly shellPath?: string,
+    private readonly retain?: (signal: AbortSignal) => Promise<void>,
   ) {}
 
   /**
@@ -146,7 +148,10 @@ export class TerminalView {
 
   private adopt(info: WebTerminalInfo): void {
     this.patch({ info, title: info.title })
-    if (this.mounted && this.closing === undefined) this.connect()
+    if (this.retain === undefined) { if (this.mounted && this.closing === undefined) this.connect(); return }
+    void this.retain(this.lifetime.signal).then(() => {
+      if (this.mounted && this.closing === undefined) this.connect()
+    }).catch((error: unknown) => { if (!this.stopped()) this.fail(error) })
   }
 
   /** Reattach with a fresh screen and regain input control. */
@@ -156,11 +161,13 @@ export class TerminalView {
     this.detach()
     const stream = this.gateway.$stream<TerminalFrame>({
       name: 'Browser terminal output',
-      open: (signal) => {
+      open: async function* (this: TerminalView, signal: AbortSignal) {
+        await this.retain?.(signal)
+        signal.throwIfAborted()
         const attachmentId = randomUUID() as TerminalAttachmentId
         this.attachmentId = attachmentId
-        return this.remote.follow(this.sessionId, info.id, attachmentId, signal)
-      },
+        yield* this.remote.follow(this.sessionId, info.id, attachmentId, signal)
+      }.bind(this),
       ended: () => new TerminalViewError('attachmentEnded'),
       carrierFailed: () => { if (this.stream === stream) this.patch({ phase: 'disconnected', writable: false }) },
     })
@@ -321,7 +328,7 @@ export class TerminalView {
       this.patch({ writable: false, error: undefined, issue: undefined })
       return
     }
-    const issue = failure?.code === 'terminal/view' ? failure.details.issue : failure?.code === 'terminal/limit-reached' ? 'terminalLimit' : undefined
+    const issue = failure?.code === 'terminal/view' ? failure.details.issue : failure?.code === 'terminal/limit-reached' ? 'terminalLimit' : failure?.code === 'terminal/unavailable' ? 'missingTerminal' : undefined
     this.patch({ phase: error instanceof RemoteStreamCarrierError ? 'disconnected' : 'failed', writable: false, issue, error: error instanceof Error ? error.message : String(error) })
   }
 }

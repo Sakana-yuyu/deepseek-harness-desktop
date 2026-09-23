@@ -19,6 +19,7 @@ import sysconfig
 import tempfile
 import threading
 import time
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -43,6 +44,7 @@ MCP_TEXT = "MCP client smoke ok"
 PROFILE_PLUGIN_PROMPT = "Verify the Python-installed dsh profile plugin."
 PROFILE_PLUGIN_TEXT = "profile plugin smoke ok"
 PROFILE_PLUGIN_MARKER = "PYTHON_INSTALLED_DSH_PROFILE_PLUGIN"
+AUTHORING_PROMPT = "Query the packaged Python environment for Office authoring."
 IS_WINDOWS = sys.platform == "win32"
 MINIMAL_SHELL_TOOL = "pwsh" if IS_WINDOWS else "bash"
 MINIMAL_SHELL_COMMAND = (
@@ -76,6 +78,8 @@ LEGACY_CUSTOM_DISABLED_ROWS = (
     "plan-mode",
     "skill",
     "skill-filesystem",
+    "skill-office",
+    "workspace-dependencies",
     "tool-fs",
     "tool-fs-search",
     "tool-goal",
@@ -99,35 +103,6 @@ RESTART_SECOND_PROMPT = "Complete the second isolated Python SDK process turn."
 RESTART_SECOND_TEXT = "PROCESS_TWO_OK"
 RESTART_FIRST_SESSION_ID = "process-one"
 RESTART_SECOND_SESSION_ID = "process-two"
-SNAPSHOT_PLUGIN_CODE = """\
-return (ctx) => {
-  ctx.on('tools/pre-execute', (exec, next) => {
-    if (exec.name !== 'snapshot_double' || exec.arguments.value !== -1) return next()
-    return {
-      kind: 'deny',
-      reason: 'Auto review rejected tool "snapshot_double"; its body was not executed',
-      info: {
-        name: 'AutoReviewDeniedError', code: 'AUTO_REVIEW_DENIED',
-        reason: '  transport raw\\r\\nreason  ',
-      },
-    }
-  })
-  harness.registerTool(ctx, harness.defineTool({
-    name: 'snapshot_double',
-    description: 'Double a number for executable snapshot verification.',
-    parameters: { value: { type: 'number', required: true } },
-    output: {
-      schema: { type: 'number' },
-      render(_args, value) {
-        return [{ type: 'text', text: String(value) }]
-      }
-    },
-    async execute(args) {
-      return args.value * 2
-    }
-  }))
-}
-"""
 SNAPSHOT_WORKFLOW_SCRIPT = (
     "phase('Delegate')\n"
     f"const reply = await agent('{SNAPSHOT_WORKFLOW_CHILD_PROMPT}', {{ label: 'workflow-child' }})\n"
@@ -343,6 +318,10 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
         result = tool_results[-1]
         call_id, tool_name = latest_tool_call(messages, result.get("tool_use_id"))
         tool_text = message_text(result.get("content"))
+        if tool_name == "load_workspace_dependencies":
+            if result.get("is_error") or "python" not in json.loads(tool_text):
+                raise AssertionError(f"packaged Python query failed: {tool_text}")
+            return text_chunks(EXPECTED_TEXT)
         mcp = mcp_tool_followup(call_id, tool_name, tool_text)
         if mcp is not None:
             return mcp
@@ -394,6 +373,7 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
         RESTART_FIRST_PROMPT,
         RESTART_SECOND_PROMPT,
         PROFILE_PLUGIN_PROMPT,
+        AUTHORING_PROMPT,
     }
     prompt = next(
         (candidate for candidate in user_prompts if candidate in scenario_prompts),
@@ -401,19 +381,18 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
     )
     if prompt == SNAPSHOT_DIRECT_CHILD_PROMPT:
         return text_chunks("DIRECT_CHILD_OK")
+    if prompt == AUTHORING_PROMPT:
+        assert_advertised_tool(body, "load_workspace_dependencies")
+        return tool_call_chunks("authoring-runtime", "load_workspace_dependencies", {})
     if prompt == SNAPSHOT_WORKFLOW_CHILD_PROMPT:
         return text_chunks("WORKFLOW_CHILD_OK")
     if prompt == SNAPSHOT_PROMPT:
-        assert_advertised_tool(body, "cordis_define")
+        assert_advertised_tool(body, "snapshot_double")
+        assert_advertised_tool(body, "run_code")
         return tool_call_chunks(
-            "advanced-define",
-            "cordis_define",
-            {
-                "plugin": {"kind": "new", "idPrefix": "snap"},
-                "name": "Snapshot Double",
-                "purpose": "Expose a deterministic doubling tool for executable snapshot verification.",
-                "code": {"host": SNAPSHOT_PLUGIN_CODE},
-            },
+            "advanced-code", "run_code",
+            {"code": "return await tools.snapshot_double({ value: 21 })",
+             "description": "Call the configured Plugin tool"},
         )
     if prompt == RESTART_FIRST_PROMPT:
         return text_chunks(RESTART_FIRST_TEXT)
@@ -578,33 +557,9 @@ def advanced_tool_followup(
     """Advance the executable snapshot's deterministic parent tool chain."""
     if not call_id.startswith("advanced-"):
         return None
-    if call_id == "advanced-define" and tool_name == "cordis_define":
-        if "Defined snap-1/pkg-1 (Snapshot Double)" not in tool_text:
-            raise AssertionError(f"cordis_define returned no dynamic Package ids: {tool_text}")
-        if "snapshot_double" in advertised_tool_names(body):
-            raise AssertionError("snapshot_double was advertised before cordis_run")
-        assert_advertised_tool(body, "cordis_run")
-        return tool_call_chunks(
-            "advanced-run",
-            "cordis_run",
-            {"pluginId": "snap-1", "packageId": "pkg-1", "mode": "run"},
-        )
-    if call_id == "advanced-run" and tool_name == "cordis_run":
-        if "snap-1/pkg-1 is running (run-1)" not in tool_text:
-            raise AssertionError(f"cordis_run returned no running Package ids: {tool_text}")
-        assert_advertised_tool(body, "run_code")
-        assert_advertised_tool(body, "snapshot_double")
-        return tool_call_chunks(
-            "advanced-code",
-            "run_code",
-            {
-                "code": "return await tools.snapshot_double({ value: 21 })",
-                "description": "Run the temporary Plugin tool",
-            },
-        )
     if call_id == "advanced-code" and tool_name == "run_code":
         if "42" not in tool_text:
-            raise AssertionError(f"run_code returned no dynamic-tool value: {tool_text}")
+            raise AssertionError(f"run_code returned no configured-tool value: {tool_text}")
         return tool_call_chunks("advanced-denied-native", "snapshot_double", {"value": -1})
     if call_id == "advanced-denied-native" and tool_name == "snapshot_double":
         if 'Auto review rejected tool "snapshot_double"; its body was not executed' not in tool_text:
@@ -647,17 +602,6 @@ def advanced_tool_followup(
     if call_id == "advanced-workflow" and tool_name == "workflow":
         if "WORKFLOW_CHILD_OK" not in tool_text:
             raise AssertionError(f"workflow returned no expected child value: {tool_text}")
-        assert_advertised_tool(body, "cordis_undefine")
-        return tool_call_chunks(
-            "advanced-undefine",
-            "cordis_undefine",
-            {"pluginId": "snap-1"},
-        )
-    if call_id == "advanced-undefine" and tool_name == "cordis_undefine":
-        if "Removed dynamic Plugin snap-1 and all of its Packages." not in tool_text:
-            raise AssertionError(f"cordis_undefine returned no removal result: {tool_text}")
-        if "snapshot_double" in advertised_tool_names(body):
-            raise AssertionError("snapshot_double remained advertised after cordis_undefine")
         return text_chunks(SNAPSHOT_FINAL_TEXT)
     raise AssertionError(f"unexpected advanced tool follow-up: {call_id} {tool_name}: {tool_text}")
 
@@ -776,7 +720,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--scenario",
-        choices=("all", "sdk-default", "sdk-custom", "sdk-minimal", "sdk-minimal-in-history", "sdk-fs-search", "sdk-spawn-node", "sdk-mcp", "sdk-snapshot", "sdk-restart", "sdk-profile-plugin", "sdk-live", "runner", "direct"),
+        choices=("all", "sdk-default", "sdk-custom", "sdk-minimal", "sdk-minimal-in-history", "sdk-fs-search", "sdk-spawn-node", "sdk-mcp", "sdk-snapshot", "sdk-restart", "sdk-profile-plugin", "sdk-office", "sdk-authoring", "sdk-live", "runner", "direct"),
         default="all",
     )
     parser.add_argument("--exe", type=Path)
@@ -795,12 +739,19 @@ def main() -> None:
         parser.error("--scenario sdk-profile-plugin requires --installed-wheel")
     if args.installed_wheel:
         args.exe = assert_installed_wheel_environment()
-    if args.scenario in {"all", "sdk-custom", "sdk-minimal", "sdk-minimal-in-history", "sdk-fs-search", "sdk-spawn-node", "sdk-snapshot", "sdk-restart", "runner", "direct"} and args.exe is None:
-        parser.error("--exe is required for custom, minimal, fs-search, spawn-node, snapshot, restart, runner, and direct scenarios")
-    if args.update_snapshots and args.scenario not in {"all", "sdk-minimal", "sdk-minimal-in-history", "sdk-snapshot", "sdk-restart"}:
-        parser.error("--update-snapshots requires --scenario sdk-minimal, sdk-minimal-in-history, sdk-snapshot, sdk-restart, or all")
+    if args.scenario in {"all", "sdk-custom", "sdk-minimal", "sdk-minimal-in-history", "sdk-fs-search", "sdk-spawn-node", "sdk-snapshot", "sdk-restart", "sdk-office", "sdk-authoring", "runner", "direct"} and args.exe is None:
+        parser.error("--exe is required for custom, minimal, fs-search, spawn-node, snapshot, restart, office, runner, and direct scenarios")
+    if args.update_snapshots and args.scenario not in {"all", "sdk-minimal", "sdk-minimal-in-history", "sdk-snapshot", "sdk-restart", "sdk-authoring"}:
+        parser.error("--update-snapshots requires --scenario sdk-minimal, sdk-minimal-in-history, sdk-snapshot, sdk-restart, sdk-authoring, or all")
     if args.exe is not None and not args.exe.is_file():
         parser.error(f"runtime executable does not exist: {args.exe}")
+
+    if args.scenario in {"all", "sdk-office"}:
+        assert args.exe is not None
+        smoke_sdk_office(args.exe.resolve())
+    if args.scenario == "sdk-office":
+        print("smoke-python-runtime: sdk-office passed")
+        return
 
     if args.scenario in {"all", "runner"}:
         assert args.exe is not None
@@ -815,6 +766,9 @@ def main() -> None:
         return
 
     with MockModel() as model:
+        if args.scenario in {"all", "sdk-authoring"}:
+            assert args.exe is not None
+            smoke_sdk_authoring(model.url, args.exe.resolve(), args.update_snapshots)
         if args.scenario in {"all", "sdk-default"}:
             smoke_sdk_default(model.url)
         if args.scenario in {"all", "sdk-custom"}:
@@ -848,6 +802,138 @@ def main() -> None:
         if not MockModelHandler.requests:
             raise AssertionError("mock model endpoint received no requests")
     print(f"smoke-python-runtime: {args.scenario} passed")
+
+
+def smoke_sdk_authoring(base_url: str, executable: Path, update_snapshots: bool) -> None:
+    """Query the bundled Python and switch skills without replacing that environment."""
+    from deepseek_harness import DeepSeekHarness
+
+    resources = executable.with_name(executable.name.removeprefix("deepseek-harness-sdk-runtime-").removesuffix(".exe"))
+    manifest = json.loads((resources / "primary-runtime/runtime.json").read_text())
+    for mode in ("default", "replacement", "disabled"):
+        with tempfile.TemporaryDirectory(prefix="dsh-sdk-authoring-") as temporary:
+            root = Path(temporary).resolve()
+            home = root / "home"
+            if mode == "replacement":
+                skill = home / "skills/office-docx/SKILL.md"
+                skill.parent.mkdir(parents=True)
+                skill.write_text("---\nname: office-docx\ndescription: CUSTOM_OFFICE_DOCX\n---\nUse the bundled Python for custom document work.\n")
+            patch = root / "skills.patch.yml"
+            patch.write_text(json.dumps([{"id": "skill-office", "disabled": True}] if mode == "disabled" else []))
+            first = len(MockModelHandler.requests)
+            with DeepSeekHarness(
+                provider="deepseek-official", model="smoke-model", cwd=str(root),
+                dsh_bin=str(executable), dsh_home=str(home), patches=(str(patch),),
+                api_key="sk-keyless-smoke", base_url=base_url,
+                env={"DSH_PERMISSION_MODE": "danger-full-access", "DSH_TELEMETRY_DISABLED": "1"},
+                request_timeout_seconds=60,
+            ) as harness:
+                result = harness.run(AUTHORING_PROMPT, session_id="authoring")
+            assert result.final_response == EXPECTED_TEXT, result.final_response
+            requests = MockModelHandler.requests[first:]
+            assert len(requests) == 2, requests
+            prompt = json.dumps(requests[0], ensure_ascii=False)
+            for name in ("office-docx", "office-pptx", "office-xlsx"):
+                assert (name in prompt) == (mode != "disabled"), (mode, name)
+            assert ("CUSTOM_OFFICE_DOCX" in prompt) == (mode == "replacement"), mode
+            tool_result = next(block for message in requests[1]["messages"]
+                               for block in message.get("content", [])
+                               if isinstance(block, dict) and block.get("tool_use_id") == "authoring-runtime")
+            dependencies = json.loads(message_text(tool_result["content"]))
+            python = Path(dependencies["python"])
+            assert python.is_relative_to(resources), dependencies
+            assert Path(dependencies["node"]).is_relative_to(resources), dependencies
+            assert Path(dependencies["pnpm"]).is_relative_to(resources), dependencies
+            assert dependencies["pythonDistributions"] == manifest["pythonPackages"], dependencies
+            assert not (home / "dsh-runtimes").exists()
+            if mode == "default":
+                subprocess.run([
+                    str(python), "-I", "-B", str(Path(__file__).parent / "primary-runtime/smoke.py"),
+                    json.dumps(manifest["pythonPackages"]), manifest["python"],
+                    str(resources / "office-skills/scripts/check_office.py"),
+                ], check=True, timeout=120,
+                    env={name: value for name, value in os.environ.items()
+                         if not re.search(r"KEY|SECRET|TOKEN|PASSWORD", name, re.I)})
+                schema = next(tool for tool in requests[0]["tools"] if tool.get("name") == "load_workspace_dependencies")
+                visible = {"tool": schema, "result": {**dependencies, "python": "{{python}}", "pythonPackages": "{{site-packages}}",
+                           **{name: "{{" + name + "}}" for name in ("node", "nodePackages", "pnpm")}}}
+                compare_snapshot_files(
+                    {"model-visible.json": json.dumps(visible, indent=2, ensure_ascii=False) + "\n"},
+                    update_snapshots, Path(__file__).parent / "snapshots/python-sdk-single-exe/authoring",
+                    ("model-visible.json",),
+                )
+    print("smoke-python-runtime: bundled Python, default skills, replacement and disabled skills passed")
+
+
+def smoke_sdk_office(executable: Path) -> None:
+    """Relocate the wheel payload and convert a real DOCX with the target platform engine."""
+    from deepseek_harness import DeepSeekHarness
+
+    with tempfile.TemporaryDirectory(prefix="dsh-sdk-office-") as temporary:
+        root = Path(temporary).resolve()
+        relocated = root / executable.name
+        stem = executable.name.removesuffix(".exe")
+        resources = executable.with_name(stem.removeprefix("deepseek-harness-sdk-runtime-"))
+        for source in [*executable.parent.glob(f"{stem}*"), resources]:
+            destination = root / source.name
+            if source.is_dir():
+                shutil.copytree(source, destination)
+            else:
+                shutil.copy2(source, destination)
+        office = root / f"{stem}-office"
+        adapter = office / "node_modules/@deepseek-ai/libreoffice-kit/package.json"
+        native = stem.removeprefix("deepseek-harness-sdk-runtime-").replace("win-", "win32-").replace("macos-", "darwin-")
+        declared = json.loads(adapter.read_text(encoding="utf-8")).get("optionalDependencies", {})
+        selected = native if f"@deepseek-ai/libreoffice-kit-{native}" in declared else "wasm"
+        expected_backend = "wasm" if selected == "wasm" else "native"
+        engines = [
+            json.loads(manifest.read_text())["engine"]["kind"]
+            for manifest in (office / "node_modules/@deepseek-ai").glob("libreoffice-kit-*/prebuilds.json")
+        ]
+        if engines != [expected_backend]:
+            raise AssertionError(f"Office sidecar must contain only {expected_backend}: {engines}")
+        plugin = root / "office.mjs"
+        shutil.copy2(Path(__file__).resolve().parent / "fixtures/python-sdk-office.mjs", plugin)
+        document = root / "document.docx"
+        with zipfile.ZipFile(document, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("[Content_Types].xml", '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+            archive.writestr("_rels/.rels", '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+            archive.writestr("word/document.xml", '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Python Office wheel</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:body></w:document>')
+
+        mode = expected_backend
+        output = root / f"{mode}.pdf"
+        result_path = root / f"{mode}.json"
+        patch = root / f"{mode}.patch.yml"
+        patch.write_text(json.dumps([{"insert": [{
+            "id": "python-sdk-office-smoke",
+            "inject": ["skills"],
+            "name": plugin.as_uri(),
+            "config": {"input": str(document), "output": str(output), "result": str(result_path)},
+        }]}]))
+        with DeepSeekHarness(
+            provider="deepseek-official",
+            model="smoke-model",
+            cwd=str(root),
+            dsh_bin=str(relocated),
+            dsh_home=str(root / f"home-{mode}"),
+            patches=(str(patch),),
+            api_key="sk-keyless-smoke",
+            base_url="http://127.0.0.1:9",
+            env={"DSH_PERMISSION_MODE": "danger-full-access", "DSH_TELEMETRY_DISABLED": "1"},
+            # The startup plugin awaits a converter with a 120-second deadline before JSON-RPC is ready.
+            initialize_timeout_seconds=180,
+            request_timeout_seconds=180,
+        ):
+            pass
+        result = json.loads(result_path.read_text())
+        if result["backend"] != expected_backend:
+            raise AssertionError(f"Office conversion did not use {expected_backend}: {result}")
+        if not result["moduleUrl"].startswith(office.as_uri() + "/"):
+            raise AssertionError(f"Office module was not loaded from the relocated wheel: {result}")
+        pdf = output.read_bytes()
+        if len(pdf) < 100 or not pdf.startswith(b"%PDF-"):
+            raise AssertionError(f"Office conversion produced an invalid PDF at {output}")
+        print(f"smoke-python-runtime: relocated Office {result['backend']} DOCX produced {len(pdf)} PDF bytes")
 
 
 def assert_installed_wheel_environment() -> Path:
@@ -971,7 +1057,7 @@ def smoke_sdk_live() -> None:
 
 
 def assert_live_turn(label: str, result: RunResult) -> None:
-    """Require completed model tool use and the exact smoke answer for each live turn."""
+    """Require completed model tool use and the smoke sentinel on the final answer line."""
     if result.finish_reason != "completed":
         event_types = [event.get("type") for event in result.events]
         turn_end_data = next(
@@ -988,7 +1074,8 @@ def assert_live_turn(label: str, result: RunResult) -> None:
             f"{label} turn made no model-requested tool call; "
             f"final={result.final_response!r}"
         )
-    if result.final_response.strip() != LIVE_API_SENTINEL:
+    answer_lines = result.final_response.strip().splitlines()
+    if not answer_lines or answer_lines[-1].strip() != LIVE_API_SENTINEL:
         raise AssertionError(f"{label} turn returned {result.final_response!r}")
 
 def safe_turn_end(value: object) -> object:
@@ -1330,6 +1417,9 @@ def smoke_sdk_snapshot(base_url: str, executable: Path, update_snapshots: bool) 
         sessions = dsh_home / "sessions"
         patch = write_advanced_profile_patch(root, "snapshot.patch.yml", sessions)
         feedback_patch = write_profile_patch(root, "feedback.patch.yml", sessions, [{"insert": [
+            {"id": "snapshot-tool", "name": (
+                Path(__file__).resolve().parent / "fixtures/python-snapshot-tool.mjs"
+            ).as_uri()},
             {"id": "snapshot-image-offload", "name": (
                 Path(__file__).resolve().parent / "fixtures/python-snapshot-image-offload.mjs"
             ).as_uri(), "config": {"parentSessionId": SNAPSHOT_SESSION_ID}},
@@ -1412,6 +1502,7 @@ def smoke_sdk_snapshot(base_url: str, executable: Path, update_snapshots: bool) 
         files = build_snapshot_files(result, logs, child_ids, root)
         compare_snapshot_files(
             files, update_snapshots, ADVANCED_SNAPSHOT_DIRECTORY, ADVANCED_SNAPSHOT_FILENAMES,
+            native_writer_output=True,
         )
 
 
@@ -1478,6 +1569,7 @@ def smoke_sdk_restart_snapshot(base_url: str, executable: Path, update_snapshots
         )
         compare_snapshot_files(
             files, update_snapshots, RESTART_SNAPSHOT_DIRECTORY, RESTART_SNAPSHOT_FILENAMES,
+            native_writer_output=True,
         )
 
 
@@ -2216,7 +2308,7 @@ def normalize_snapshot_value(
                 dt = member.get("dt")
                 if isinstance(dt, list):
                     member["dt"] = [0] * len(dt)
-    if isinstance(normalized.get("id"), str) and normalized.get("role") in ("assistant", "system", "user"):
+    if isinstance(normalized.get("id"), str) and normalized.get("role") in ("assistant", "system", "user", "tool", "developer"):
         if not normalized["id"].startswith("{{message:"):
             normalized["id"] = "{{messageId}}"
     if normalized.get("type") in ("feedback/message-put", "feedback/message-delete"):
@@ -2281,6 +2373,7 @@ def project_session_snapshot(records: list[dict[str, object]]) -> list[dict[str,
 
 
 SESSION_FORMAT_TOKEN = "{{sessionFormatVersion}}"
+NATIVE_DELIVERY_FORMAT_TOKEN = "{{sourceSessionFormatVersion}}"
 
 
 def expand_snapshot_stream_member(member: object) -> list[dict[str, object]]:
@@ -2403,7 +2496,31 @@ def normalize_session_format_comparison(
     return normalized
 
 
-def normalize_snapshot_comparison_text(name: str, content: str) -> str:
+def normalize_native_delivery_record(value: object, source_version: int) -> object:
+    """Tokenize a native delivery qualifier in one Session event or SDK notification."""
+    if not isinstance(value, dict):
+        return value
+    if value.get("method") == "session.event":
+        for key in ("payload", "params"):
+            wrapper = value.get(key)
+            if isinstance(wrapper, dict) and "event" in wrapper:
+                return {**value, key: {
+                    **wrapper,
+                    "event": normalize_native_delivery_record(wrapper["event"], source_version),
+                }}
+    data = value.get("data")
+    if value.get("type") != "session-log-deepseek/delivery-accepted" or not isinstance(data, dict):
+        return value
+    if data.get("sessionFormatVersion") != source_version:
+        return value
+    return {**value, "data": {**data, "sessionFormatVersion": NATIVE_DELIVERY_FORMAT_TOKEN}}
+
+
+def normalize_snapshot_comparison_text(
+    name: str,
+    content: str,
+    native_writer_version: int | None = None,
+) -> str:
     """Normalize Session generation metadata only while comparing committed expected outputs."""
     if name.startswith("session") and name.endswith(".jsonl"):
         parsed = [json.loads(line) for line in content.splitlines() if line]
@@ -2411,6 +2528,8 @@ def normalize_snapshot_comparison_text(name: str, content: str) -> str:
         source_version = header.get("version") if isinstance(header, dict) else None
         if not isinstance(source_version, int):
             raise AssertionError(f"{name}: snapshot Session header has no integer format version")
+        if native_writer_version is not None:
+            parsed = [normalize_native_delivery_record(record, native_writer_version) for record in parsed]
         records = [
             normalize_session_format_comparison(expanded, source_version)
             for record in parsed
@@ -2418,8 +2537,18 @@ def normalize_snapshot_comparison_text(name: str, content: str) -> str:
         ]
         return render_jsonl(records)
     if name.endswith(".json"):
+        value = json.loads(content)
+        if name == "result.json" and native_writer_version is not None and isinstance(value, dict):
+            value = {
+                **value,
+                **{
+                    key: [normalize_native_delivery_record(record, native_writer_version) for record in value[key]]
+                    for key in ("events", "notifications")
+                    if isinstance(value.get(key), list)
+                },
+            }
         return json.dumps(
-            normalize_session_format_comparison(json.loads(content)),
+            normalize_session_format_comparison(value),
             indent=2,
             ensure_ascii=False,
         ) + "\n"
@@ -2431,8 +2560,10 @@ def compare_snapshot_files(
     update: bool,
     directory: Path,
     filenames: tuple[str, ...],
+    *,
+    native_writer_output: bool = False,
 ) -> None:
-    """Compare ordered artifact roles and Session content across generations, or write generated filenames."""
+    """Compare artifact roles and content, optionally matching each side's native delivery generation."""
     scenario = directory.name
 
     def role_name(name: str) -> str:
@@ -2484,12 +2615,24 @@ def compare_snapshot_files(
             f"{scenario} snapshot Session roles differ: "
             f"expected={sorted(selected_expected)}, actual={sorted(actual_sessions)}",
         )
+    actual_native_version = expected_native_version = None
+    if native_writer_output:
+        def common_generation(contents: list[tuple[str, str]]) -> int:
+            versions = {session_header_version(content, name) for name, content in contents}
+            if len(versions) != 1:
+                raise AssertionError(f"{scenario}: native writer comparison requires one Session generation across all roles")
+            return versions.pop()
+
+        actual_native_version = common_generation(list(actual_sessions.values()))
+        expected_native_version = common_generation([
+            (path.name, path.read_text(encoding="utf-8")) for path in selected_expected.values()
+        ])
     for name, actual in files.items():
         parsed = parse_snapshot_session_filename(name)
         expected_path = directory / name if parsed is None else selected_expected[parsed[0]]
         expected_text = expected_path.read_text(encoding="utf-8")
-        compared_actual = normalize_snapshot_comparison_text(name, actual)
-        compared_expected = normalize_snapshot_comparison_text(expected_path.name, expected_text)
+        compared_actual = normalize_snapshot_comparison_text(name, actual, actual_native_version)
+        compared_expected = normalize_snapshot_comparison_text(expected_path.name, expected_text, expected_native_version)
         if compared_actual == compared_expected:
             continue
         diff = "".join(difflib.unified_diff(

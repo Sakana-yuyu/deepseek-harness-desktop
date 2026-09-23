@@ -45,17 +45,6 @@
   font: var(--dsw-font-xxs-12);
 }
 
-.historyLoadingSpinner {
-  width: 10px;
-  height: 10px;
-  box-sizing: border-box;
-  border: 1.5px solid var(--dsw-alias-border-l2);
-  border-top-color: var(--dsw-alias-state-business-primary);
-  border-radius: 50%;
-  corner-shape: round;
-  animation: history-loading-spin 700ms linear infinite;
-}
-
 .table tbody .historyLoadRow td {
   height: 30px;
   padding: 0;
@@ -105,16 +94,6 @@
 
 .table:not([data-scroll-ready='true']) {
   visibility: hidden;
-}
-
-@keyframes history-loading-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .historyLoadingSpinner {
-    animation: none;
-  }
 }
 
 .table {
@@ -1423,70 +1402,70 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.markdownPreview > div,
-.markdownPayload > div {
+.markdownPreview > div:not([data-markdown-variant='compact']),
+.markdownPayload > div:not([data-markdown-variant='compact']) {
   gap: 8px;
   font: var(--dsw-font-xs-13);
 }
 
-.markdownPreview > div h1,
-.markdownPayload > div h1 {
+.markdownPreview > div:not([data-markdown-variant='compact']) h1,
+.markdownPayload > div:not([data-markdown-variant='compact']) h1 {
   font: 600 16px/22px var(--dsw-font-family);
 }
 
-.markdownPreview > div h2,
-.markdownPayload > div h2 {
+.markdownPreview > div:not([data-markdown-variant='compact']) h2,
+.markdownPayload > div:not([data-markdown-variant='compact']) h2 {
   font: 600 15px/22px var(--dsw-font-family);
 }
 
-.markdownPreview > div :where(h3, h4, h5, h6),
-.markdownPayload > div :where(h3, h4, h5, h6) {
+.markdownPreview > div:not([data-markdown-variant='compact']) :where(h3, h4, h5, h6),
+.markdownPayload > div:not([data-markdown-variant='compact']) :where(h3, h4, h5, h6) {
   font: 600 14px/20px var(--dsw-font-family);
 }
 
-.markdownPreview > div :not(pre) > code,
-.markdownPayload > div :not(pre) > code {
+.markdownPreview > div:not([data-markdown-variant='compact']) :not(pre) > code,
+.markdownPayload > div:not([data-markdown-variant='compact']) :not(pre) > code {
   font: 12px/18px var(--ds-font-family-code);
 }
 
-.markdownPreview > div table,
-.markdownPayload > div table {
+.markdownPreview > div:not([data-markdown-variant='compact']) table,
+.markdownPayload > div:not([data-markdown-variant='compact']) table {
   font: var(--dsw-font-xs-13);
 }
 
-.markdownPreview > div > :first-child {
+.markdownPreview > div:not([data-markdown-variant='compact']) > :first-child {
   margin-top: 0;
 }
 
-.markdownPreview > div > :last-child {
+.markdownPreview > div:not([data-markdown-variant='compact']) > :last-child {
   margin-bottom: 0;
 }
 
-.markdownPreview > div :where(h1, h2, h3) {
+.markdownPreview > div:not([data-markdown-variant='compact']) :where(h1, h2, h3) {
   margin: 12px 0 6px;
 }
 
-.markdownPreview > div :where(h4, h5, h6) {
+.markdownPreview > div:not([data-markdown-variant='compact']) :where(h4, h5, h6) {
   margin: 10px 0 5px;
 }
 
-.markdownPreview > div :where(p, ul, ol) {
+.markdownPreview > div:not([data-markdown-variant='compact']) :where(p, ul, ol) {
   margin: 8px 0;
 }
 
-.markdownPreview > div li:not(:first-child) {
+.markdownPreview > div:not([data-markdown-variant='compact']) li:not(:first-child) {
   margin-top: 3px;
 }
 
-.markdownPreview > div blockquote {
+.markdownPreview > div:not([data-markdown-variant='compact']) blockquote {
   margin-top: 8px;
 }
 
-.markdownPreview > div hr {
+.markdownPreview > div:not([data-markdown-variant='compact']) hr {
   margin: 14px 0;
 }
 
-.markdownPreview > div > :global(.md-code-block) {
+.markdownPreview > div:not([data-markdown-variant='compact']) > :global(.md-code-block) {
   margin: 10px 0;
 }
 
@@ -1496,6 +1475,8 @@
 }
 
 .thinkingQuote {
+  --dsh-content-font-size-secondary: 13px;
+  --dsh-content-font-delta-secondary: 0px;
   margin: 6px 14px 0 12px;
   padding-left: 6px;
   border-left: 2px solid var(--dsw-alias-markdown-citation);
@@ -1708,9 +1689,86 @@
   gap: 8px;
 }
 
-.messageImagesPreview {
-  margin: 6px 14px 8px;
+.attachments {
+  display: flex;
+  flex-direction: column;
+  margin: 8px 14px 14px;
+  padding: 0;
+  gap: 8px;
+  list-style: none;
+}
+
+.attachmentsPreview {
+  margin-block: 6px 8px;
   gap: 6px;
+}
+
+.attachmentRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 8px;
+  gap: 10px;
+  border: 0.5px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 12px;
+}
+
+.attachmentIcon {
+  display: grid;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+}
+
+.attachmentInfo {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+
+.attachmentName {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentMetadata {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentDisclosure {
+  margin-block: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 8px;
+}
+
+.attachmentDisclosure > summary {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.attachmentDisclosure > summary .attachmentName {
+  display: block;
+}
+
+.attachmentDisclosure > summary:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.attachmentDisclosure > pre {
+  padding: 0 8px 8px;
 }
 
 .assistantToolCalls {

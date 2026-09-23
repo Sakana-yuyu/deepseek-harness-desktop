@@ -8,7 +8,7 @@ import type { ThemeSnapshot } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { TerminalViewState } from '@deepseek-ai/dsh-api-terminal-controller/client'
 import type { WebTerminalId } from '@deepseek-ai/dsh-api-terminal-controller/types'
-import { TerminalBody, type TerminalBodyProps } from '../src/client/TerminalBody.tsx'
+import { TerminalBody, type TerminalBodyProps } from '../src/client/terminal.tsx'
 import { TerminalTitle } from '../src/client/TerminalTitle.tsx'
 import { en, zh } from '../src/client/locales.ts'
 
@@ -108,7 +108,7 @@ it('mounts automatic startup and offers retry only when startup fails', () => {
   fireEvent.click(h.view.getByRole('button', { name: en.retry }))
   expect(h.model.refresh).toHaveBeenCalledOnce()
   h.update({ ...idle, phase: 'disconnected' })
-  fireEvent.click(h.view.getByRole('button', { name: en.retry }))
+  fireEvent.click(h.view.getByRole('button', { name: en.reconnect }))
   expect(h.model.refresh).toHaveBeenCalledTimes(2)
   h.update({ ...idle, phase: 'creating' })
   expect(h.view.getByRole('status').textContent).toBe(en.creating)
@@ -173,11 +173,11 @@ it('displays disconnect, close and exit states and offers explicit reconnection 
   h.update({ ...idle, info, phase: 'closing' })
   expect(h.view.queryByRole('status')).toBeNull()
   h.update({ ...idle, info, phase: 'closed' })
-  expect(h.view.getByRole('status').textContent).toBe(en.closed)
+  expect(h.view.getByRole('status').textContent).toContain(en.closed)
   h.update({ ...idle, info: { ...info, state: 'exited', exitCode: 5 }, phase: 'connected' })
-  expect(h.view.getByRole('status').textContent).toBe('Process exited (5)')
+  expect(h.view.getByRole('status').textContent).toContain('Process exited (5)')
   h.update({ ...idle, info: { ...info, state: 'exited', error: 'provider stopped' }, phase: 'connected' })
-  expect(h.view.getByRole('status').textContent).toBe('Process exited (—)')
+  expect(h.view.getByRole('status').textContent).toContain('Process exited (—)')
   expect(h.view.getByRole('alert').textContent).toContain('provider stopped')
   h.update({ ...idle, info: { ...info, state: 'failed', error: 'provider unreachable' }, phase: 'connected' })
   expect(h.view.getByRole('status').textContent).toBe(en.unavailable)
@@ -375,4 +375,44 @@ it.each([en, zh])('translates known terminal failures while retaining unknown Ho
   }
   h.update({ ...idle, phase: 'failed', error: 'Host permission denied' })
   expect(h.view.getByRole('alert').textContent).toContain('Host permission denied')
+})
+
+it.each([en, zh])('offers an explicit new terminal for missing instances without retrying the lost process', (dictionary) => {
+  const h = mount({ ...idle, phase: 'failed', issue: 'missingTerminal', error: 'raw Host diagnostic' }, dictionary)
+  expect(h.view.getByRole('alert').textContent).toBe(dictionary.missingTerminal)
+  expect(h.view.queryByRole('button', { name: dictionary.reconnect })).toBeNull()
+  expect(h.view.queryByRole('button', { name: dictionary.retry })).toBeNull()
+  expect(h.view.queryByRole('textbox')).toBeNull()
+  fireEvent.click(h.view.getByRole('button', { name: dictionary.new }))
+  expect(h.openTab).toHaveBeenCalledExactlyOnceWith('terminal', { replaceTab: true })
+  expect(h.model.refresh).not.toHaveBeenCalled()
+  expect(h.model.connect).not.toHaveBeenCalled()
+})
+
+it('removes a stale emulator when the Host confirms the terminal is missing', () => {
+  const h = mount({ ...idle, info, phase: 'connected', writable: true })
+  const terminal = fake.terminals[0]!
+  h.update({ ...idle, info, phase: 'failed', issue: 'missingTerminal' })
+  expect(terminal.dispose).toHaveBeenCalledOnce()
+  expect(h.view.queryByRole('textbox')).toBeNull()
+  expect(h.view.getByRole('button', { name: en.new })).toBeDefined()
+})
+
+it('keeps the screen on a temporary disconnect and presents reconnection without transport diagnostics', () => {
+  const h = mount({ ...idle, info, phase: 'disconnected', error: 'Remote mux WebSocket closed: 1006' })
+  expect(h.view.queryByRole('alert')).toBeNull()
+  expect(h.view.getByRole('status').textContent).toContain(en.disconnected)
+  expect(h.view.getByRole('textbox')).toBeDefined()
+  expect(h.view.queryByRole('button', { name: en.new })).toBeNull()
+  fireEvent.click(h.view.getByRole('button', { name: en.reconnect }))
+  expect(h.model.connect).toHaveBeenCalledOnce()
+  expect(h.openTab).not.toHaveBeenCalled()
+})
+
+it('offers a new terminal after process exit while preserving its final output for reading', () => {
+  const h = mount({ ...idle, info: { ...info, state: 'exited', exitCode: 0 }, phase: 'failed' })
+  expect(h.view.getByRole('textbox')).toBeDefined()
+  expect(h.view.queryByRole('button', { name: en.reconnect })).toBeNull()
+  fireEvent.click(h.view.getByRole('button', { name: en.new }))
+  expect(h.openTab).toHaveBeenCalledExactlyOnceWith('terminal', { replaceTab: true })
 })

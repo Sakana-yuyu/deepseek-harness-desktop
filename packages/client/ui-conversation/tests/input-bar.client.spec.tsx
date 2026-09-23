@@ -8,6 +8,8 @@
 // root listener routes them through the keymap commands); draft writes drive
 // the shell (jsdom's beforeinput lacks the ranges Lexical needs).
 
+import './control-row-dom.ts'
+import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
@@ -18,6 +20,7 @@ import {
 } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SessionListState, SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ContextPressureProjection } from '@deepseek-ai/dsh-token-meter/client'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -25,12 +28,12 @@ import type { SubmitOutcome } from '../src/client/contract/input.ts'
 import { SessionInputShell } from '../src/client/input/facade.ts'
 import { $replaceDetectSpanWithText, $selectDetectSpan } from '../src/client/input/editor/span-map.ts'
 import type {
-  ComposerAttachment, ComposerAttachmentsOwnerProps, DraftFileUploads,
+  ComposerAttachment, ComposerAttachmentsOwnerProps, DraftFileUploads, InputActivityOwnerProps,
 } from '../src/client/contract/slots.ts'
 import type { DraftAttachmentId } from '../src/client/contract/input.ts'
 import { InputBar } from '../src/client/skeleton/InputBar.tsx'
 import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
-import { zh } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined })) as GlobalStandardProps['useResource']
@@ -80,7 +83,8 @@ interface BenchOptions {
   onRequestWorkspace?: () => void
   promptError?: SessionSnapshot['promptError']
   /** Authoritative queue rows served to the machine overlay (empty = none). */
-  queue?: SessionSnapshot['queue']
+  queue?: InboxState['next-turn']
+  nextStep?: InboxState['next-step']
   /** The hub's steer-all face (empty-draft accelerated Enter). */
   steerQueue?: () => void
   variant?: 'hero' | 'composer'
@@ -90,21 +94,23 @@ interface BenchOptions {
   overlay?: React.ReactNode
   leftItems?: React.ReactNode
   rightItems?: React.ReactNode
+  activityEntry?: (owner: InputActivityOwnerProps) => React.ReactNode
+  contextPressure?: ContextPressureProjection
   footer?: React.ReactNode
   attachments?: readonly ComposerAttachment[]
   /** Upload states served for file-kind drafts (absent = every file is ready). */
   fileUploads?: DraftFileUploads
-  addFiles?: (files: readonly File[]) => string | null
+  addFiles?: (files: readonly File[], directories?: ReadonlySet<File>) => string | null
   commandMenuOpen?: boolean
   busyEnter?: 'queue' | 'steer'
   toggleCommandMenu?: (selection: { start: number; end: number }) => void
 }
 
 /** One pending queue row (the runtime snapshot shape, as the dock tests build it). */
-function row(id: string): SessionSnapshot['queue'][number] {
+function row(id: string): InboxState['next-turn'][number] {
   return {
-    id: id as never, messageId: `message-${id}` as never, placement: 'queued',
-    content: [{ type: 'text', text: id }], preview: id, text: id,
+    id: id as never, role: 'user', source: { kind: 'user' },
+    content: [{ type: 'text', text: id }],
   }
 }
 
@@ -122,17 +128,16 @@ function bench(over?: BenchOptions) {
     subagent: over?.subagent ?? null,
     removed: over?.disabled ?? false,
     promptError: over?.promptError ?? null,
-    queue: over?.queue ?? [],
   }))
   type ShellDeps = ConstructorParameters<typeof SessionInputShell>[0]
   const shell = new SessionInputShell({
     actx: SCTX,
     defaultSink: sink,
     commandAttachments: { serialize: () => Promise.resolve([]), release: () => {}, unsupportedNotice: (token: string) => `${token.trim()} attachments-unsupported` },
-    queue: {
-      getSnapshot: () => session.getSnapshot().queue,
-      subscribe: fn => session.subscribe(fn),
-    },
+    inbox: createSnapshotStore<InboxState>({
+      'next-turn': over?.queue ?? [],
+      'next-step': over?.nextStep ?? [],
+    }),
     ...(over?.steerQueue !== undefined ? { steerQueue: over.steerQueue } : {}),
     // Lexicon-only stub: adjudication untouched (undefined slash methods are
     // never reached — these benches drive plain-draft flows only).
@@ -161,6 +166,7 @@ function bench(over?: BenchOptions) {
     if (key === 'conversation.input.plan') return over?.planEntry ?? null
     if (key === 'conversation.input.permission') return over?.permissionEntry ?? null
     if (key === 'conversation.input.model') return over?.modelEntry ?? null
+    if (key === 'conversation.input.activity') return over?.activityEntry?.(owner as InputActivityOwnerProps) ?? null
     return null
   }) as never
   const props: InputBarProps = {
@@ -169,20 +175,22 @@ function bench(over?: BenchOptions) {
     SessionProvider: ({ children }) => children,
     useSession: bindSnapshotSelector(session),
     useConversation: bindSnapshotSelector(createSnapshotStore(conversationFixture())),
-    useSessionPendingInteraction: bindSnapshotSelector(createSnapshotStore(new Map())),
+    useSessionStatus: bindSnapshotSelector(createSnapshotStore(new Map())),
+    useSessionRetainInfo: () => undefined,
     useResource,
     useSessions: bindSnapshotSelector(createSnapshotStore<SessionListState>({
-      ids: [], byId: {}, current: undefined, phase: 'ready',
-      subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+      ids: [], byId: {}, phase: 'ready',
+      projectionsBySession: {},
     })),
     useWorkspaces: bindSnapshotSelector(createSnapshotStore({
-      items: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+      items: [], archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
     })),
     useProjection: ((key: string, selector?: (v: unknown) => unknown) =>
       (selector ?? (v => v))(key === 'plan'
         ? over?.plan
         : key === 'goal' ? over?.goal
-          : key === 'imageLimits' ? over?.imageLimits : undefined)),
+          : key === 'imageLimits' ? over?.imageLimits
+            : key === 'contextPressure' ? over?.contextPressure : undefined)),
     useInput: bindSnapshotSelector(shell.state),
     inputActions: shell.actions,
     keyboard: shell,
@@ -268,6 +276,23 @@ function writeDraft(shell: SessionInputShell, text: string): void {
   act(() => { shell.setDraft(text) })
 }
 
+describe('composer focus handoff', () => {
+  it('focus() returns the keyboard to the editor through Lexical, not a bare DOM focus', () => {
+    const { shell, textarea } = bench()
+    writeDraft(shell, 'draft text')
+    textarea.blur()
+    expect(document.activeElement).not.toBe(textarea)
+
+    const lexicalFocus = vi.spyOn(shell.editor, 'focus')
+    act(() => { shell.focus() })
+    expect(document.activeElement).toBe(textarea)
+    // Lexical's own focus restores its stored selection; a bare DOM focus would
+    // land the caret at the start of the draft. jsdom carries no caret, so the
+    // selection itself is asserted in the browser lane.
+    expect(lexicalFocus).toHaveBeenCalled()
+  })
+})
+
 describe('composer placeholder visibility', () => {
   it.each([' ', '   ', '\t', '\n'])('hides for whitespace %j and returns after deletion', async (draft) => {
     const { view, shell, textarea, button, sink, props } = bench()
@@ -325,9 +350,32 @@ describe('image draft rail', () => {
         getData: () => '同时粘贴的文字',
       },
     })
-    expect(addFiles).toHaveBeenCalledWith([image])
+    expect(addFiles).toHaveBeenCalledWith([image], undefined)
     // The paste lands inside the PASTE_COMMAND update; its commit is a microtask away.
     await vi.waitFor(() => { expect(shell.snapshot.draft).toBe('同时粘贴的文字') })
+  })
+
+  it('passes known clipboard directories and keeps files whose entry metadata is unavailable', () => {
+    const addFiles = vi.fn(() => null)
+    const { textarea } = bench({ addFiles })
+    const folder = new File([], 'folder with spaces')
+    const emptyFile = new File([], 'empty-file')
+    const withoutApi = new File([], 'without-api')
+    const withoutEntry = new File([], 'without-entry')
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [
+          { kind: 'string', getAsFile: () => null },
+          { kind: 'file', getAsFile: () => folder, webkitGetAsEntry: () => ({ isDirectory: true }) },
+          { kind: 'file', getAsFile: () => emptyFile, webkitGetAsEntry: () => ({ isDirectory: false }) },
+          { kind: 'file', getAsFile: () => withoutApi },
+          { kind: 'file', getAsFile: () => withoutEntry, webkitGetAsEntry: () => null },
+          { kind: 'file', getAsFile: () => null },
+        ],
+        getData: () => '',
+      },
+    })
+    expect(addFiles).toHaveBeenCalledWith([folder, emptyFile, withoutApi, withoutEntry], new Set([folder]))
   })
 
   it('pre-checks projected limits at intake: whole-batch refusal with product copy, none added', () => {
@@ -367,7 +415,7 @@ describe('image draft rail', () => {
     const within = bench({ addFiles: vi.fn(() => null), imageLimits: limits })
     const fits = png(16, 'fits.png')
     intake(within, [fits])
-    expect(within.props.addFiles).toHaveBeenCalledWith([fits])
+    expect(within.props.addFiles).toHaveBeenCalledWith([fits], undefined)
     expect(within.view.queryByRole('alert')).toBeNull()
   })
 
@@ -390,7 +438,7 @@ describe('image draft rail', () => {
       new File([new ArrayBuffer(64)], 'b.pdf', { type: 'application/pdf' }),
     ]
     act(() => { attachmentOwner(result.slotCalls).onAddFiles(files) })
-    expect(addFiles).toHaveBeenCalledWith(files)
+    expect(addFiles).toHaveBeenCalledWith(files, undefined)
     expect(result.view.getByRole('alert').textContent).toContain('仅支持 PNG、JPG、WebP、GIF 格式的图片')
   })
 
@@ -407,6 +455,17 @@ describe('image draft rail', () => {
       },
     })
     expect(attachmentOwner(result.slotCalls).dropLimits).toEqual({ count: 20, size: '5MB' })
+  })
+
+  it('forwards dropped directories to addFiles and announces its refusal', () => {
+    const addFiles = vi.fn((_files: readonly File[], directories?: ReadonlySet<File>) =>
+      directories !== undefined && directories.size > 0 ? '只有桌面端支持添加文件夹，浏览器里请添加单个文件' : null)
+    const result = bench({ addFiles })
+    const folder = new File([], 'project')
+    const note = new File([Uint8Array.of(1)], 'notes.md', { type: 'text/markdown' })
+    act(() => { attachmentOwner(result.slotCalls).onAddFiles([folder, note], new Set([folder])) })
+    expect(addFiles).toHaveBeenCalledWith([folder, note], new Set([folder]))
+    expect(result.view.getByRole('alert').textContent).toContain('只有桌面端支持添加文件夹')
   })
 
   it('announces server attachment rejections as product copy, other codes as developer text', () => {
@@ -665,7 +724,7 @@ describe('Enter semantics', () => {
     // Pending steering rows are not the queue: nothing to flush.
     const steering = bench({
       running: true,
-      queue: [{ ...row('s-1'), placement: 'steering' }],
+      nextStep: [row('s-1')],
       steerQueue: vi.fn(),
     })
     fireEvent.keyDown(steering.textarea, { key: 'Enter', metaKey: true })
@@ -1286,9 +1345,9 @@ describe('machine pending lock', () => {
 })
 
 describe('decorations', () => {
-  /** The claim-token styled leaf (the transform's inline warn color). */
+  /** The claim-token styled leaf (the transform's inline accent color). */
   function tokenSpanOf(container: HTMLElement): HTMLElement | null {
-    return container.querySelector('[data-lexical-text][style*="warn-label"]')
+    return container.querySelector('[data-lexical-text][style*="business-primary"]')
   }
 
   it('claimed token styles the leading leaf and sets the blank-args hint variable', () => {
@@ -1511,6 +1570,17 @@ describe('insertText (scoped event body)', () => {
 })
 
 describe('strips and variants', () => {
+  it.each([zh, en])('shows localized guidance when another writer owns the Session', (dictionary) => {
+    const send = bench({
+      promptError: {
+        op: 'send',
+        error: new RemoteError('session/writer-held', 'internal writer diagnostic', { sessionId: SID }),
+      },
+      t: makeTranslate(dictionary, commonZh),
+    })
+    expect(send.view.getByRole('alert').textContent).toBe(dictionary['error.sessionInUse'])
+  })
+
   it('announces promptError as a fading toast (ordinary failure — no transaction UI, no Retry)', () => {
     vi.useFakeTimers()
     try {
@@ -1580,7 +1650,7 @@ describe('command launcher chrome and control seats', () => {
     expect([...new Set(slotCalls.map(c => c.key))]).toEqual([
       'conversation.input.overlay', 'conversation.input.attachments',
       'conversation.input.permission', 'conversation.input.plan', 'conversation.input.left',
-      'conversation.input.right', 'conversation.input.model',
+      'conversation.input.right', 'conversation.input.model', 'conversation.input.activity',
       'conversation.composer.dock',
     ])
     expect(view.queryByLabelText('Plan mode')).toBeNull()
@@ -1597,6 +1667,18 @@ describe('command launcher chrome and control seats', () => {
     expect(toggleCommandMenu).toHaveBeenCalledExactlyOnceWith({ start: 2, end: 7 })
     act(() => { menuLauncher.set('command') })
     expect(launcher.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('opening the command menu from the button puts the keyboard in the editor first', () => {
+    const toggleCommandMenu = vi.fn()
+    const { view, textarea } = bench({ toggleCommandMenu })
+    // Tab to the button and activate it: the keyboard is on the button, and the
+    // menu is a combobox whose arrows live on the editor.
+    textarea.blur()
+    expect(document.activeElement).not.toBe(textarea)
+    fireEvent.click(view.getByLabelText('添加文件或调用指令'))
+    expect(document.activeElement).toBe(textarea)
+    expect(toggleCommandMenu).toHaveBeenCalledTimes(1)
   })
 
   it('a registered entry fills its seat and receives the locked owner prop', () => {
@@ -1630,4 +1712,43 @@ describe('command launcher chrome and control seats', () => {
     const live = bench({ running: true })
     expect((live.view.getByLabelText('添加文件或调用指令') as HTMLButtonElement).disabled).toBe(false)
   })
+})
+
+it('lets a toolbar activity replace accessories without replacing the draft editor or send action', () => {
+  const { view } = bench({ draft: 'keep this draft', modelEntry: <button>model choice</button>,
+    activityEntry: owner => <>
+      <button onClick={() => { owner.onActiveChange(true) }}>expand activity</button>
+      <button onClick={() => { owner.onActiveChange(false) }}>close activity</button>
+    </>,
+  })
+  const editor = view.getByRole('textbox')
+  fireEvent.click(view.getByRole('button', { name: 'expand activity' }))
+  expect(view.queryByRole('button', { name: 'model choice' })).toBeNull()
+  expect(view.getByRole('textbox')).toBe(editor)
+  expect(editor.textContent).toBe('keep this draft')
+  expect(view.getByRole('button', { name: '发送消息' })).toBeTruthy()
+  fireEvent.click(view.getByRole('button', { name: 'close activity' }))
+  expect(view.getByRole('button', { name: 'model choice' })).toBeTruthy()
+})
+
+it('places context usage below the composer and hides it until the activity closes', () => {
+  const { view } = bench({ draft: 'draft', contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 },
+    activityEntry: owner => <>
+      <button onClick={() => { owner.onActiveChange(true) }}>microphone</button>
+      <button onClick={() => { owner.onActiveChange(false) }}>close activity</button>
+    </>,
+  })
+  const meter = view.getByRole('button', { name: '上下文已用 25%' })
+  const microphone = view.getByRole('button', { name: 'microphone' })
+  expect(microphone.compareDocumentPosition(meter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  fireEvent.click(meter)
+  expect(view.getByRole('dialog', { name: '上下文已用' })).toBeTruthy()
+  fireEvent.click(microphone)
+  expect(view.queryByRole('dialog', { name: '上下文已用' })).toBeNull()
+  expect(view.queryByRole('button', { name: '上下文已用 25%' })).toBeNull()
+  expect(view.getByRole('button', { name: '发送消息' })).toBeTruthy()
+  fireEvent.click(view.getByRole('button', { name: 'close activity' }))
+  fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
+  expect(view.getByRole('dialog', { name: '上下文已用' })).toBeTruthy()
+  expect(view.getByRole('button', { name: '发送消息' })).toBeTruthy()
 })

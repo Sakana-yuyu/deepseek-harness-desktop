@@ -26,7 +26,9 @@ Each declares itself in its own `package.json` under a `dsh` field: `dsh.profile
 
 Layers apply to an empty entry list in this order: each bundle in the profile's listed order, then the profile's `cordis.patch.yml`, then the home-level one, then any `--patch` overlay. A patch targets a row by id and replaces its whole config, or inserts new rows.
 
-Custom profiles default to live patch reload. The shipped `web` profile is live; `headless`, `sdk`, `sdk-minimal`, and `acp` apply all layers once at startup because replacing a one-shot or stdio application's dependencies after it owns work would invalidate that lifecycle.
+YAML controls HMR: base enables config-only `dsh-hmr`; headless, SDK and ACP disable it; `sdk-minimal` omits it. Profile patches override these defaults. HMR coordinates watching and reloads; the launcher provides profile data and readiness.
+
+Base includes [Plugin Manager](../packages/boot/plugin-manager/README.md) for Web and agents.
 
 To see the tree your machine boots:
 
@@ -40,17 +42,17 @@ Composition mechanics are in [app-boot](../packages/boot/app-boot/README.md#prof
 
 ## Application launch
 
-Every supported Node application starts at the `dsh` CLI with a named profile. The shipped applications are `dsh web` (the deliberate alias for `--profile web`), `dsh --profile headless`, `dsh --profile sdk`, `dsh --profile sdk-minimal`, and `dsh --profile acp`. The TypeScript SDK resolves its same-version `dsh` dependency and selects `sdk`; custom plugin composition remains a profile plus ordered patch files, not another executable or inline application tree. `sdk-minimal` is a repository-owned standalone bundle behind the same launcher, not a caller-supplied Cordis tree.
+Supported Node applications launch through named `dsh` profiles. The shipped profiles are `web`, `headless`, `sdk`, `sdk-minimal`, and `acp`, selected with `dsh --profile <name>` or `dsh <name>`. `plugin` names the management command; a profile with that name requires `--profile plugin`. The TypeScript SDK resolves its same-version `dsh` dependency and selects `sdk`; custom plugin composition remains a profile plus ordered patch files, not another executable or inline application tree. `sdk-minimal` is a repository-owned standalone bundle behind the same launcher, not a caller-supplied Cordis tree.
 
-Vendored CLIs, build-only and test-only executables, direct in-process plugin mounting, and the private browser WebWorker preview are not Harness application launchers. [`verify-application-entrypoints`](../scripts/verify-application-entrypoints.ts) keeps every package bin, executable source, and root demo in an explicit class and rejects a Node application path that bypasses `dsh`.
+Vendored CLIs, build-only and test-only executables, direct in-process plugin mounting, and the private browser WebWorker preview are not Harness application launchers. [`verify-application-entrypoints`](../scripts/verify-application-entrypoints.ts) keeps every package bin, executable source, root demo, and the root `start:web` and `dev:web` scripts in an explicit class and rejects a Node application path that bypasses `dsh`.
 
 The Python SDK follows the same application architecture. Its runtime wheel packages the normal `dsh` CLI as `deepseek-harness-sdk-runtime-<platform>-<arch>`, and the client launches `dsh --profile sdk` with an explicit Harness home by default. The minimal example selects the shipped `sdk-minimal` profile. Python exposes profile selection and ordered patch files rather than a complete Cordis tree; persistent external plugins are installed through `dsh plugin`. The removed private direct-config carrier has no compatibility bin or fallback parser.
 
 ## Desktop application
 
-The [Electron desktop application](../apps/desktop/README.md) carries its exact dsh production runtime in signed application resources. The reserved `$DSH_HOME/profiles/desktop` contains external plugins and links to host-owned packages; compatible upgrades retain plugin files and refresh these links without installing core dependencies. CLI profiles share supported product data under `$DSH_HOME`, while executable packages, plugin activation, lockfiles, and package-manager state remain separate.
+The [Electron desktop application](../apps/desktop/README.md) carries its exact dsh production runtime in signed resources and owns the reserved `$DSH_HOME/profiles/desktop`. Shared profile helpers initialize its files, reconcile installed bundles, and resolve installation and bundle dependencies without replacing pnpm-owned packages. CLI and Desktop share product data, while executable packages, activation choices, and lockfiles remain separate. The public CLI cannot manage Desktop’s profile.
 
-Electron starts the private Desktop Host package under its bundled upstream Node.js process; that package loads the bundled dsh backend and matching client graph together with enabled profile plugins. Unary RPC, Remote streams, and version-matched client assets cross versioned framed byte pipes with Node IPC reserved for lifecycle control, then reach the renderer through the secure `dsh-app://` protocol; the desktop composition opens no Web server or loopback port. Only shell-owned UI can run plugin transactions through the bundled pnpm and its private `$DSH_HOME/desktop/pnpm/store`.
+Electron starts the private Desktop Host in Electron Node mode. The Host invokes the shared CLI profile runner and complete Web application. The window immediately loads packaged Web assets and waits for boot injections before activating client plugins in the same document. Web owns RPC and streams; the desktop carrier connects the local page to the authenticated Host. Node IPC carries boot injections, readiness, fatal errors, and shutdown. Desktop defaults to port `19387`; profile configuration can override it. Shell-owned UI runs plugin transactions through bundled pnpm with normal user and profile configuration.
 
 ## Core packages
 
@@ -106,11 +108,11 @@ turn/end
 
 `turn/*`, `step/*`, `system/message`, `user/message`, `assistant/message`, `assistant/attempt`, and `tool/*` are durable session events; the rest are live extension points across three domains. `agent/assistant-stream` publishes process-local start, transient chunk, and end frames. The loop commits the complete compact stream as one message or log-only attempt before a committed end frame, and the Web Session-follow adapter is the live event's only remote consumer. `agent/pre-step`, `agent/request`, `llm/stream`, and the three `tools/*` events are waterfalls, whose listeners must call `next()` to delegate; `agent/turn-stopping` is serial and has no `next()`.
 
-Input reaches the driver through one inbox. Some messages wake it immediately; injected context waits in the inbox until another message does.
+One inbox feeds the driver; injected context waits for a waking message. AgentLoop’s durable `inbox` projection exposes pending input without live Agents.
 
 `agent/pre-step` decides the accepted input. Listeners may rewrite or reject claimed messages; a rejected or empty first claim closes a durable turn without a step. An enter decision may set `startsRequestSeries`: the loop logs a fresh `request/header` (reason `series`, or `change` with `startsSeries: true` when the envelope also changed). Wrapping listeners preserve that declaration with `{ ...decision, messages }`. After assembly and `step/start`, `agent/request` and `prepareCall()` resolve the actual route before the system prompt and accepted users are committed; cancellation during either async phase commits neither. The prepared call capability governs prompt admission, not the preceding `request/context`. Every attempt synchronously reconciles the same rendered assembly, appends users only on the first attempt, logs header/context as needed, and derives and freezes the request before streaming the bound call. Retries do not repeat assembly or `agent/pre-step`. Surface replacements and image-offload decisions after attachment start a new request series, including during the first resumed pre-step; unchanged resume continues the series. The first admitted step reserves the system head before user messages even for an empty prompt (no wire message). The prompt travels only as `system/message` history: an empty rendering clears all active system nodes, leaving no old prompt model-visible; capable routes can append non-empty updates after the cached prefix; incapable routes and new request series consolidate non-empty prompt text at the first system node, with logged empty replacements for non-empty later system nodes ([decision](../.agents/notes/implemented/architecture/2026-09-02-system-prompt-as-surface-node.md); [decision rule](../packages/core/agent-loop/README.md#understand-the-implementation)).
 
-The loop sends immutable requests while keeping cancellation live. It reuses message-freeze evidence only for identities it has fully frozen; [agent-loop](../packages/core/agent-loop/README.md) owns the request construction rules.
+The loop sends immutable requests while keeping cancellation live. It reuses message-freeze evidence only for identities it has fully frozen; [agent-loop](../packages/core/agent-loop/README.md) owns the request construction and cancellation-cause rules.
 
 Details: the [sequence diagram](agent-lifecycle.md), the [tool pipeline](tool-execution-pipeline.md), and [cancellation and error recovery](subsystems/core.md#the-agent-handle).
 
@@ -144,7 +146,7 @@ New behavior attaches to a documented extension point. Changing the loop itself 
 | Add shell execution | register a `ctx.shell` backend; the local one spawns through `ctx.subprocess` |
 | Add persistent terminal execution | register a `ctx.terminals` backend plus `dsh-tool-terminal` |
 | Add a human command | register on `ctx.commands`; it dispatches without a model turn |
-| Add background work | register on `ctx.jobs`; `job_*` tools collect or stop it |
+| Manage background jobs | register on `ctx.jobs`; `job_*` tools read or stop jobs |
 | Start a Session from an external webhook | register a trusted rule on `ctx.webhookRuntime` and mount a provider adapter |
 | Add filesystem access or policy | register a `ctx.fs` provider or listen to `fs/*` events |
 | Confine spawned processes | use a `ctx.sandbox` backend; consumers wrap argv before spawning |
@@ -159,4 +161,4 @@ New behavior attaches to a documented extension point. Changing the loop itself 
 | Store sessions in a new backend | implement `SessionPersistence` (`create`/`open`/`stat`/`list`/`export`) over the shared handle scaffolding |
 | Scope a registration to one agent | use that agent's `agent.ctx` |
 
-The [extension cookbook](cookbook/extension-cookbook.md) maps features to capabilities and indexes the step-by-step guides for [packages](cookbook/adding-a-package.md), [tools](cookbook/adding-a-tool.md), [LLM adapters](cookbook/adding-an-llm-adapter.md), and [settings cards](cookbook/adding-a-settings-card.md). The [Conversation subsystem](subsystems/conversation.md) owns Chat-node assembly.
+The [extension cookbook](cookbook/extension-cookbook.md) maps features to capabilities and indexes the step-by-step guides for [packages](cookbook/adding-a-package.md), [tools](cookbook/adding-a-tool.md), [LLM adapters](cookbook/adding-an-llm-adapter.md), and [settings pages](cookbook/adding-a-settings-card.md). The [Conversation subsystem](subsystems/conversation.md) owns Chat-node assembly.

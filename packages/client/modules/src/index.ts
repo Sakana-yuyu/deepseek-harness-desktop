@@ -23,7 +23,7 @@
  * @module @deepseek-ai/dsh-client-modules
  */
 
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
@@ -62,6 +62,8 @@ export interface ClientArtifactBaseline {
   readonly path: string
   /** Bundle modification time in milliseconds. */
   readonly mtimeMs: number
+  /** Bundle status-change time in milliseconds, including writes that preserve mtime. */
+  readonly ctimeMs: number
   /** Bundle size in bytes. */
   readonly size: number
 }
@@ -146,6 +148,7 @@ interface ComboResource {
   id: string
   rev: string
   clientPath: string
+  fileName: string
   bundle: Buffer
 }
 
@@ -157,15 +160,21 @@ interface LazyResponse {
 
 /** Fields shared by every generated combo plan. */
 interface ComboArtifact {
+  /** Absolute route URL of this response. */
   url: string
   rev: string
   entries: string[]
+  /** Absolute route URL of the map response. */
   sourceMapUrl: string
   scriptBody: () => Promise<Buffer>
   sourceMapBody: () => Promise<Buffer>
 }
 
-/** One generated initial-load response and its wire descriptor. */
+/**
+ * One generated initial-load response and its wire descriptor. The descriptor
+ * travels to the browser, so its URL is the document-relative reference while
+ * {@link ComboArtifact.url} is the route key.
+ */
 type BatchArtifact = ComboArtifact & { descriptor: WebBootBatch }
 
 /** Versioned code is immutable; mismatched revisions are rejected instead of serving newer bytes. */
@@ -179,6 +188,8 @@ const COMBO_REVISION_PLACEHOLDER = '0'.repeat(HASH_REVISION_LENGTH)
 const SOURCE_MAP_TRAILER = /(?:\r?\n)?\/\/# sourceMappingURL=[^\r\n]*(?:\r?\n)?$/
 /** Debugger source name appended to page bundles in the WebWorker image. */
 const SOURCE_URL_TRAILER = /(?:\r?\n)?\/\/# sourceURL=([^\r\n]+)(?:\r?\n)?$/
+/** Published package-local client chunk names accepted by the on-demand route. */
+const CLIENT_CHUNK = /^client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js$/
 
 /** Resolve `exports["./client"]` to a relative path, accepting the string and one-level conditional forms. */
 function clientExportOf(pkgName: string, exportsField: unknown): string | undefined {
@@ -193,32 +204,64 @@ function clientExportOf(pkgName: string, exportsField: unknown): string | undefi
   throw new Error(`client-modules: ${pkgName} exports["./client"] must be a string or an object with a string default`)
 }
 
-/** sha1 content hash shortened to 12 hex chars (combo / graph / rebuilt-artifact rev). */
-function shortHash(input: string | Buffer): string {
+/** sha1 metadata hash shortened to 12 hex chars. */
+function shortHash(input: string): string {
   return createHash('sha1').update(input).digest('hex').slice(0, HASH_REVISION_LENGTH)
 }
 
 /** Hash several response fields without allowing bytes to move across field boundaries. */
-function framedHash(domain: string, parts: readonly Buffer[]): string {
+function framedHash(domain: string, parts: readonly string[]): string {
   const hash = createHash('sha1').update(domain).update('\0')
-  for (const part of parts) hash.update(`${String(part.byteLength)}:`).update(part)
+  for (const part of parts) hash.update(`${String(Buffer.byteLength(part))}:`).update(part)
   return hash.digest('hex').slice(0, HASH_REVISION_LENGTH)
 }
 
-/** Hash the executable artifact served after HMR observes one plugin change. */
-function artifactRevision(bundle: Buffer): string {
-  return framedHash('plugin-artifact', [bundle])
+/** Identify an entry's build from filesystem metadata without hashing its contents. */
+function artifactRevision(baseline: ClientArtifactBaseline): string {
+  return framedHash('plugin-artifact', [String(baseline.mtimeMs), String(baseline.ctimeMs), String(baseline.size)])
 }
 
-/** Address one ordered plugin-file list through the shared combo route. */
-function comboUrl(ids: readonly string[], rev: string, sourceMap = false): string {
+/** Absolute route prefix serving every plugin resource. */
+const PLUGIN_ROUTE = '/plugins'
+
+/** Combo query addressing one ordered plugin-file list. */
+function comboSearch(ids: readonly string[], rev: string, sourceMap = false): string {
   const resources = ids.map(id => `${id}/client.js${sourceMap ? '.map' : ''}`).join(',')
-  return `/plugins/??${resources}&rev=${rev}`
+  return `??${resources}&rev=${rev}`
 }
 
-/** Measure the longer map-form URL used to partition a startup resource list. */
+/** Absolute route URL for one combo resource. */
+function comboUrl(ids: readonly string[], rev: string, sourceMap = false): string {
+  return `${PLUGIN_ROUTE}/${comboSearch(ids, rev, sourceMap)}`
+}
+
+/**
+ * Browser reference to one combo resource: app-owned browser routes are
+ * document-relative, so the route key's leading slash is stripped here, at the
+ * boundary between the two halves. The rule and its reasons are owned by
+ * .agents/notes/implemented/architecture/2026-09-14-web-document-relative-app-routes.md.
+ */
+function comboReference(ids: readonly string[], rev: string, sourceMap = false): string {
+  return comboUrl(ids, rev, sourceMap).slice(1)
+}
+
+/** Absolute route URL for one package-local chunk. */
+function chunkUrl(id: string, fileName: string, rev: string, sourceMap = false): string {
+  return `${PLUGIN_ROUTE}/${id}/${fileName}${sourceMap ? '.map' : ''}?rev=${rev}`
+}
+
+/**
+ * Source-map reference stamped into one chunk script. A script's map reference
+ * resolves against that script's own directory rather than the document, so
+ * this is the bare map file name, not the document-relative route.
+ */
+function chunkMapReference(fileName: string, rev: string): string {
+  return `${fileName}.map?rev=${rev}`
+}
+
+/** Measure the longest browser-facing combo URL used to partition a startup resource list. */
 function projectedComboUrlBytes(records: readonly WebPluginRecord[]): number {
-  return Buffer.byteLength(comboUrl(
+  return Buffer.byteLength(comboReference(
     records.map(record => record.entry.id),
     COMBO_REVISION_PLACEHOLDER,
     true,
@@ -265,12 +308,12 @@ function prepareSource(resource: ComboResource): PreparedSource {
   source = source.replace(SOURCE_URL_TRAILER, '').replace(SOURCE_MAP_TRAILER, '')
   if (!source.endsWith('\n')) source += '\n'
   const fallbackSource = sourceUrl === undefined
-    ? `/plugins/${resource.id}/client.js`
+    ? `/plugins/${resource.id}/${resource.fileName}`
     : /^(?:[A-Za-z][A-Za-z\d+.-]*:|\/)/.test(sourceUrl) ? sourceUrl : `/${sourceUrl}`
   return { source, fallbackSource }
 }
 
-/** Stamp a combo script's absolute indexed-map URL onto its executable bytes. */
+/** Stamp a combo script's source-map reference onto its executable bytes. */
 function comboScript(input: string, sourceMapUrl?: string): Buffer {
   return Buffer.from(sourceMapUrl === undefined ? input : `${input}//# sourceMappingURL=${sourceMapUrl}\n`)
 }
@@ -284,7 +327,7 @@ function readSourceMap(clientPath: string): Record<string, unknown> | undefined 
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
     throw error
   }
-  const value = JSON.parse(body.toString('utf8')) as unknown
+  const value: unknown = JSON.parse(body.toString('utf8'))
   const parsed = typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined
   if (
     parsed === undefined
@@ -349,8 +392,8 @@ function lazyBody(produce: () => Buffer): () => Promise<Buffer> {
 /** Derive one combo revision from the ordered immutable row revisions. */
 function comboRevision(resources: readonly ComboResource[]): string {
   return framedHash('combo', resources.flatMap(resource => [
-    Buffer.from(resource.id),
-    Buffer.from(resource.rev),
+    resource.id,
+    resource.rev,
   ]))
 }
 
@@ -365,6 +408,7 @@ function buildComboScript(resources: readonly ComboResource[], sourceMapUrl: str
 function buildComboSourceMap(
   resources: readonly ComboResource[],
   sourceMapOf: (clientPath: string) => Record<string, unknown> | undefined,
+  fileName = 'client.js',
 ): Buffer {
   const sections: { offset: { line: number; column: 0 }; map: Record<string, unknown> }[] = []
   let line = 0
@@ -383,7 +427,7 @@ function buildComboSourceMap(
     sections.push({ offset: { line, column: 0 }, map: section })
     line += newlineCount(`${prepared.source};\n`)
   }
-  return Buffer.from(`${JSON.stringify({ version: 3, file: 'client.js', sections })}\n`)
+  return Buffer.from(`${JSON.stringify({ version: 3, file: fileName, sections })}\n`)
 }
 
 /** Describe one combo and defer its executable and debug payloads independently. */
@@ -396,18 +440,20 @@ function buildCombo(
     id: record.entry.id,
     rev: record.entry.rev,
     clientPath: record.meta.clientPath,
+    fileName: 'client.js',
     bundle: record.bundle,
   }))
   const rev = revision ?? comboRevision(resources)
   const entries = resources.map(resource => resource.id)
   const url = comboUrl(entries, rev)
   const sourceMapUrl = comboUrl(entries, rev, true)
+  // Trailer only: it resolves against this script's own directory, not the document.
   return {
     url,
     rev,
     entries,
     sourceMapUrl,
-    scriptBody: lazyBody(() => buildComboScript(resources, sourceMapUrl)),
+    scriptBody: lazyBody(() => buildComboScript(resources, comboSearch(entries, rev, true))),
     sourceMapBody: lazyBody(() => buildComboSourceMap(resources, sourceMapOf)),
   }
 }
@@ -421,15 +467,20 @@ function buildBatch(
   const artifact = buildCombo(records, sourceMapOf)
   return {
     ...artifact,
-    descriptor: { phase, url: artifact.url, rev: artifact.rev, entries: artifact.entries },
+    descriptor: {
+      phase,
+      url: artifact.url.slice(1),
+      rev: artifact.rev,
+      entries: artifact.entries,
+    },
   }
 }
 
-/** Graph row for one bundle rev (url carries the rev as its cache-busting query). */
+/** Graph row for one bundle rev (the reference carries the rev as its cache-busting query). */
 function graphRow(id: string, rev: string, fields: WebBootRowFields): WebBootEntry {
   return {
     id,
-    url: comboUrl([id], rev),
+    url: comboReference([id], rev),
     rev,
     ...(fields.inject !== undefined ? { inject: fields.inject } : {}),
     ...(fields.immediately ? { immediately: true } : {}),
@@ -553,8 +604,6 @@ export class ClientModuleRegistry extends Service {
   private readonly rebuildListeners = new Set<(id: string, rev: string) => void>()
   private readonly graphListeners = new Set<() => void>()
   private readonly dirty = new Set<string>()
-  private readonly initialRevisionNonce = randomBytes(8).toString('hex')
-  private nextInitialRevision = 0
   private responses = new Map<string, LazyResponse>()
   private batchResponses = new Map<string, LazyResponse>()
   /** One prior graph generation covers a request racing the HMR recomposition that replaced its URL. */
@@ -597,7 +646,7 @@ export class ClientModuleRegistry extends Service {
 
     const registerWebCarrier = (webCtx: Context): void => {
       webCtx.effect(
-        () => webCtx.webServer.register({ kind: 'prefix', path: '/plugins', handler: this.serveBundle }),
+        () => webCtx.webServer.register({ kind: 'prefix', path: PLUGIN_ROUTE, handler: this.serveBundle }),
         'client-modules: bundle route',
       )
     }
@@ -655,19 +704,20 @@ export class ClientModuleRegistry extends Service {
   }
 
   /**
-   * Re-hash one bundle (the HMR watch's registration hook — the only entry
-   * point through which bundle content changes reach the graph).
+   * Publish one completed bundle generation (the HMR watch's registration
+   * hook — the only entry point through which build changes reach the graph).
+   * Unchanged mtime, ctime and size preserve the graph without reading the bundle.
    * @param id - entry id (package name).
-   * @returns the new rev, or undefined for an unknown id.
+   * @returns the current artifact rev, or undefined for an unknown id.
    */
   rebuilt(id: string): string | undefined {
     const record = this.table.get(id)
     if (record === undefined) return undefined
     const baseline = this.captureArtifactBaseline(record.meta.clientPath)
-    const bundle = readFileSync(record.meta.clientPath)
-    const rev = artifactRevision(bundle)
-    record.baseline = baseline
+    const rev = artifactRevision(baseline)
     if (rev === record.entry.rev) return rev
+    const bundle = readFileSync(record.meta.clientPath)
+    record.baseline = baseline
     record.entry = graphRow(id, rev, record.meta)
     record.bundle = bundle
     this.composed = this.compose()
@@ -685,7 +735,7 @@ export class ClientModuleRegistry extends Service {
   }
 
   /**
-   * Subscribe to bundle rebuilds; fires only when the re-hash changed the rev.
+   * Subscribe to bundle rebuilds; fires only when artifact metadata changes the rev.
    * @param listener - receives the entry id and its new bundle rev.
    * @returns the unsubscriber.
    */
@@ -725,7 +775,9 @@ export class ClientModuleRegistry extends Service {
 
     const batchResponses = new Map<string, LazyResponse>()
     for (const artifact of artifacts) {
-      batchResponses.set(artifact.descriptor.url, this.responses.get(artifact.descriptor.url) ?? {
+      // The table is keyed by the absolute route the request arrives on, not by
+      // the document-relative reference the graph and descriptors carry.
+      batchResponses.set(artifact.url, this.responses.get(artifact.url) ?? {
         body: artifact.scriptBody,
         contentType: 'text/javascript; charset=utf-8',
       })
@@ -745,6 +797,9 @@ export class ClientModuleRegistry extends Service {
         body: artifact.sourceMapBody,
         contentType: 'application/json; charset=utf-8',
       })
+    }
+    for (const [resourceUrl, response] of this.responses) {
+      if (this.chunkRequest(new URL(resourceUrl, 'http://x')) !== undefined) responses.set(resourceUrl, response)
     }
     this.previousBatchResponses = this.batchResponses
     this.batchResponses = batchResponses
@@ -886,13 +941,9 @@ export class ClientModuleRegistry extends Service {
     return {
       path: clientPath,
       mtimeMs: bundle.mtimeMs,
+      ctimeMs: bundle.ctimeMs,
       size: bundle.size,
     }
-  }
-
-  /** Allocate an opaque initial row revision without inspecting artifact bytes. */
-  private allocateInitialRevision(): string {
-    return `${this.initialRevisionNonce}-${String(this.nextInitialRevision++)}`
   }
 
   /**
@@ -983,10 +1034,9 @@ export class ClientModuleRegistry extends Service {
     const source = sources[0]
     if (source === undefined) return this.table.delete(packageName)
     if (this.table.get(packageName)?.sourceKey === source.sourceKey) return false
-    // The opaque initial rev rides the row until HMR observes a file change;
-    // a fiber restart from the same source reuses the existing row.
+    // Startup and HMR share revisions so unchanged artifacts survive a server restart.
     const snapshot = this.initialBundleSnapshot(packageName, source.meta.clientPath)
-    const rev = this.allocateInitialRevision()
+    const rev = artifactRevision(snapshot.baseline)
     this.table.set(packageName, {
       entry: graphRow(packageName, rev, source.meta),
       loaderName: source.loaderName,
@@ -1026,6 +1076,55 @@ export class ClientModuleRegistry extends Service {
     this.notifyGraphChanged()
   }
 
+  /** Match an exact current-revision package-local chunk URL without reading its file. */
+  private chunkRequest(requestUrl: URL): {
+    record: WebPluginRecord
+    fileName: string
+    sourceMap: boolean
+    resourceUrl: string
+  } | undefined {
+    const resourceUrl = `${requestUrl.pathname}${requestUrl.search}`
+    for (const record of this.table.values()) {
+      const prefix = `/plugins/${record.entry.id}/`
+      if (!requestUrl.pathname.startsWith(prefix)) continue
+      const requested = requestUrl.pathname.slice(prefix.length)
+      const sourceMap = requested.endsWith('.map')
+      const fileName = sourceMap ? requested.slice(0, -'.map'.length) : requested
+      if (!CLIENT_CHUNK.test(fileName)) return undefined
+      if (resourceUrl !== chunkUrl(record.entry.id, fileName, record.entry.rev, sourceMap)) return undefined
+      return { record, fileName, sourceMap, resourceUrl }
+    }
+    return undefined
+  }
+
+  /** Build a package-local chunk response only when its URL is requested. */
+  private chunkResponse(requestUrl: URL): LazyResponse | undefined {
+    const request = this.chunkRequest(requestUrl)
+    if (request === undefined) return undefined
+    const { record, fileName, sourceMap, resourceUrl } = request
+    const clientPath = join(dirname(record.meta.clientPath), fileName)
+    if (!existsSync(clientPath)) return undefined
+    const sourceMapUrl = chunkMapReference(fileName, record.entry.rev)
+    const resource = (): ComboResource => ({
+      id: record.entry.id,
+      rev: record.entry.rev,
+      clientPath,
+      fileName,
+      bundle: readFileSync(clientPath),
+    })
+    const response: LazyResponse = sourceMap
+      ? {
+        body: lazyBody(() => buildComboSourceMap([resource()], this.readSourceMap, fileName)),
+        contentType: 'application/json; charset=utf-8',
+      }
+      : {
+        body: lazyBody(() => buildComboScript([resource()], sourceMapUrl)),
+        contentType: 'text/javascript; charset=utf-8',
+      }
+    this.responses.set(resourceUrl, response)
+    return response
+  }
+
   private async bundleResource(method: string | undefined, url: string): Promise<{
     status: number
     headers?: Record<string, string>
@@ -1034,7 +1133,9 @@ export class ClientModuleRegistry extends Service {
     if (method !== 'GET' && method !== 'HEAD') return { status: 405 }
     const requestUrl = new URL(url, 'http://x')
     const resourceUrl = `${requestUrl.pathname}${requestUrl.search}`
-    const response = this.responses.get(resourceUrl) ?? this.previousBatchResponses.get(resourceUrl)
+    const response = this.responses.get(resourceUrl)
+      ?? this.previousBatchResponses.get(resourceUrl)
+      ?? this.chunkResponse(requestUrl)
     if (response !== undefined) {
       return {
         status: 200,

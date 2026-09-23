@@ -44,6 +44,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 | [`computer-use/`](computer-use/README.zh.md) | 按名称独占注册桌面提供方 |
 | [`browser-use/`](browser-use/README.zh.md) | 按名称独占注册浏览器提供方 |
 | [`sandbox/`](sandbox/README.zh.md) | 进程限制 seam；bwrap、Landlock、Seatbelt 后端 |
+| [`deliverables/`](deliverables/README.zh.md) | 轮次交付物：显式文件交付与记录的工作区改动 |
 | [`fs/`](fs/README.zh.md) | 文件系统能力系列：seam、本地实现、面向模型的文件工具、发现工具 |
 | [`lsp/`](lsp/README.zh.md) | LSP 能力系列：seam、通用 stdio 提供方和 `lsp` 工具 |
 | [`skill/`](skill/README.zh.md) | skill（技能）能力系列：提供方注册表、本地提供方、面向模型的目录／loader |
@@ -55,6 +56,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 | [`workflow/`](workflow/README.zh.md) | 工作流 seam、PTC 进程引擎、面向模型的 `workflow`／`ralph` 工具 |
 | [`webhook/`](webhook/README.zh.md) | 已验证外部事件、受信规则与即发即弃 Workspace 会话 |
 | [`web/`](web/README.zh.md) | Web 能力系列：seam、搜索／获取提供方、面向模型的 Web 工具 |
+| [`document/`](document/README.zh.md) | 共享宿主 Office 到 PDF 转换 |
 | [`attachment/`](attachment/README.zh.md) | 持久附件标识、校验、本地内容寻址存储 |
 | [`spill/`](spill/README.zh.md) | spill 能力系列：存储 seam、本地实现、工具结果 spill 策略 |
 | [`todo/`](todo/README.zh.md) | 面向模型的 `todo_write` 工具 |
@@ -75,7 +77,7 @@ harness 由 `packages/` 下的 npm 包组装而成，按能力系列分组：会
 | [`acp/`](acp/README.zh.md) | 仅面向自动化的 ACP（Agent Client Protocol）服务器 |
 | [`interaction/`](interaction/README.zh.md) | 人机协作平面：批准／交互 seam、权限预设、命令、询问用户的工具 |
 | [`boot/`](boot/README.zh.md) | 共享的 app bin 启动粘合层 |
-| [`host/`](host/README.zh.md) | web GUI 宿主半侧：API 网关 + HTTP 路由服务器 |
+| [`host/`](host/README.zh.md) | Web GUI 宿主服务、目录选择、应用启动、插件清单和产品遥测 |
 | [`client/`](client/README.zh.md) | web GUI 浏览器半侧：shell、协议层、对象服务、slot、`ui-*` 插件 |
 | [`test-support/`](test-support/README.zh.md) | 测试基础设施（testkit、回放、Loader 冒烟测试） |
 | [`runtime-diagnostics/`](runtime-diagnostics/README.zh.md) | 运行时诊断：按包归属的运行时不变式检查与报告 |

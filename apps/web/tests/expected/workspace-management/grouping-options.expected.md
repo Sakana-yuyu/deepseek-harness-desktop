@@ -1,0 +1,13 @@
+- menu:
+  - text: Group by
+  - menuitem "WorkSpace"
+  - menuitem "Workspace Tree"
+  - menuitem "In one list"
+  - separator
+  - text: Order by
+  - menuitem "Manual"
+  - menuitem "Last updated"
+  - separator
+  - text: Filter sessions
+  - menuitem "Show archived"
+  - menuitem "Archived only"

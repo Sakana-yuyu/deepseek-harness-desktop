@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Add Auto review to the current-session permission pickers in a Web profile. Before each native or PTC inner tool call, the current agent's provider and model assess the pending action; an allowed call executes with Full access. Default Web keeps its three permission modes until this layer is explicitly installed. Auto review is experimental: it can allow unsafe actions, deny useful work, and spend additional tokens.
+Add Auto review to the current-session permission pickers in a Web profile. Before each native or PTC inner tool call, the current agent's provider and model assess the pending action; an allowed call executes with Full access. The dsh installation ships this layer switched off; default Web keeps its three permission modes until it is switched on from the Web sidebar's Plugins page or installed explicitly. Auto review is experimental: it can allow unsafe actions, deny useful work, and spend additional tokens.
 
 ## Table of Contents
 
@@ -57,7 +57,7 @@ A denied call uses the ordinary tool card. The collapsed row identifies Auto rev
 
 [`cordis.patch.yml`](cordis.patch.yml) inserts the package itself as the `auto-review` row. [`src/index.ts`](src/index.ts) requires the LLM, permission, Session, and tools services, then installs the preset contribution and prepended pre-execute listener in one effect. The [permission owner](../../interaction/permission-presets/README.md) supplies the current identity and process catalog; Auto shares Full access's existing sandbox and approval values without changing tool definitions.
 
-The reviewer reconstructs five sections from the current Session surface and pending execution: fixed policy, cwd-only environment, sourced project constraints, filtered sourced history, and the complete pending action. Native schema comes from the latest request header. A PTC binding freezes its schema and carries it through the scheduler into transient execution metadata; start and settle events never serialize description or parameters. Main-agent `system/message` nodes, assistant text and reasoning, and tool results are excluded. [The decision record](../../../.agents/notes/implemented/feature/2026-08-28-auto-review.md) owns authority, lifecycle, and child-inheritance rationale.
+The reviewer reconstructs five sections from the current Session surface and pending execution: fixed policy, cwd-only environment, sourced project constraints, filtered sourced history, and the complete pending action. Native schema comes from the latest request header. A PTC binding freezes its schema and carries it through the scheduler into transient execution metadata; start and settle events never serialize description or parameters. Main-agent `system/message` nodes, assistant text and reasoning, and tool results are excluded. The outer review input is a frozen `RequestUserInput` without durable identity or source; retained history keeps its original source attribution in the review text. [The decision record](../../../.agents/notes/implemented/feature/2026-08-28-auto-review.md) owns authority, lifecycle, and child-inheritance rationale.
 
 Unloading closes selection and review admission, migrates live Auto Sessions to Full access through the existing preset writer, then aborts and drains reviews before withdrawing the listener and contribution. Knobs and persistent terminals survive that migration. A persisted Auto Session cannot publish without the complete integration; reopening it after installation is an explicit user action. Reinstalling the layer restores the option but does not switch live Sessions back to Auto.
 
@@ -112,7 +112,7 @@ The denial appends an ordinary tool result; it does not rewrite earlier context 
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- Auto requires an explicitly installed Web layer; it is absent from default Web, Headless, General settings, and new-session defaults.
+- Auto requires this Web layer switched on; it is absent from default Web, Headless, General settings, and new-session defaults.
 - Auto provides no file sandbox. The outer `run_code` transport and direct Node effects inside a PTC program do not pass through inner-tool review.
 - Model classification can be wrong. There are no deterministic tool exemptions, persistent grants, manual fallback, configurable policy, or retry layer.
 - In-process Auto children review their own calls. Out-of-process children retain their native permission systems after the parent delegation call is allowed.

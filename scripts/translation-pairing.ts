@@ -167,8 +167,7 @@ export const TRANSLATION_SCOPE_GLOB_EXCLUDES = [
   '.artifacts/**',
   '**/target/**',
   'apps/desktop-tauri/bundled/**',
-  'python/sdk-runtime/src/deepseek_harness_runtime/runtime/deepseek-harness-sdk-runtime-*/**',
-  'python/sdk-runtime/src/deepseek_harness_runtime/runtime/node/**',
+  'python/sdk-runtime/src/deepseek_harness_runtime/runtime/**',
   'vendor/**',
 ]
 
@@ -179,8 +178,7 @@ function isTranslationSourceExcluded(file: string): boolean {
       || segment.startsWith('.doc-typecheck-')
     || segment.startsWith('.node-next-types-'))
     || file.startsWith('apps/web/dist/')
-    || file.startsWith('python/sdk-runtime/src/deepseek_harness_runtime/runtime/deepseek-harness-sdk-runtime-')
-    || file.startsWith('python/sdk-runtime/src/deepseek_harness_runtime/runtime/node/')
+    || file.startsWith('python/sdk-runtime/src/deepseek_harness_runtime/runtime/')
 }
 
 /** Whether one discovered Markdown or sidecar path belongs to the bilingual source corpus. */

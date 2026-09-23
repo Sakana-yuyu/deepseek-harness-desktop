@@ -28,6 +28,7 @@ function bootThemeBodyScript(preference: ThemePreference, fontSize: number): str
     && typeof matchMedia !== 'undefined'
     && matchMedia('(prefers-color-scheme: dark)').matches
   const dark = preference === 'dark' || systemDark
+  document.documentElement.dataset.dsThemeSource = preference
   document.body.toggleAttribute('data-ds-dark-theme', dark)
   document.body.style.setProperty('--dsh-content-font-size', ${JSON.stringify(`${fontSize}px`)})
 })()`

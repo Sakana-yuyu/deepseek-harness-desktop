@@ -31,7 +31,7 @@ interface ServiceRole {
   key: string
   pkg: string
   title: string
-  mode: 'core' | 'seam' | 'bundle'
+  mode: 'core' | 'seam' | 'bundle' | 'service'
   implementations?: string[]
   consumers?: string[]
   companions?: string[]
@@ -63,6 +63,7 @@ type EventReceiverKind = 'context' | 'agent-dispatch' | 'events-service'
 const GROUP_ORDER = [
   'util',
   'attachment',
+  'document',
   'llm',
   'core',
   'typert',
@@ -99,6 +100,46 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'hmr',
+    pkg: 'hmr',
+    title: 'Serialized module and configuration reloads',
+    mode: 'core',
+    consumers: ['app-boot'],
+    note: 'Owns module and exact configuration watchers; application mutations share its queue and automatic reloads await the application file lock.',
+  },
+  {
+    key: 'pluginRegistryProbe',
+    pkg: 'client-ui-plugin-manager',
+    title: 'Host registry response comparison',
+    mode: 'core',
+    consumers: ['client-ui-plugin-manager'],
+    note: 'Races public registry responses on the Host; the Client owns the initial registry recommendation.',
+  },
+  {
+    key: 'pluginManager',
+    pkg: 'plugin-manager',
+    title: 'Current-profile plugin and bundle management',
+    mode: 'core',
+    consumers: ['plugin-manager', 'ui-settings-plugin-inventory'],
+    note: 'Shares profile package operations with the CLI and reports persisted and running state to Web and agent callers.',
+  },
+  {
+    key: 'profileContext',
+    pkg: 'app-boot',
+    title: 'Launcher-owned profile data',
+    mode: 'core',
+    consumers: ['plugin-manager'],
+    note: 'The dsh launcher supplies data-only profile locations and composition inputs; reload scheduling belongs to dsh-hmr.',
+  },
+  {
+    key: 'connection',
+    pkg: 'client-connection',
+    title: 'Authenticated browser transport',
+    mode: 'core',
+    consumers: ['api-gateway', 'host-frontend-static'],
+    note: 'Owns browser authentication and shared HTTP request dispatch; API adapters register endpoints and streams.',
+  },
+  {
     key: 'mcpResources',
     pkg: 'mcp-resources',
     title: 'Scoped MCP resource access',
@@ -124,6 +165,11 @@ const SERVICE_ROLES: ServiceRole[] = [
     implementations: ['experimental-computer-use-cua-driver-mcp', 'experimental-computer-use-cua-driver-native'],
     consumers: ['experimental-computer-use-cua-driver-mcp', 'experimental-computer-use-cua-driver-native'],
     note: 'One provider-owned name per service instance. Each provider also owns its model tools; the service has no common action API, runtime selection, or Session workflow lock.',
+  },
+  {
+    key: 'officeToPdf', pkg: 'office-to-pdf', title: 'Office to PDF conversion',
+    mode: 'core', consumers: ['client-ui-sidebar-documentpreview'],
+    note: 'Authorized Office bytes are converted on the Host using the declared native target engine, or Node WASM when no native target is declared.',
   },
   {
     key: 'attachments',
@@ -185,6 +231,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns append-only Session instances and emits the durable session event feed.',
   },
   {
+    key: 'speechController',
+    pkg: 'experimental-api-speech-to-text',
+    title: 'Experimental transcription Remote',
+    mode: 'core',
+    note: 'Validates bounded browser audio before provider dispatch.',
+  },
+  {
     key: 'sessionController',
     pkg: 'api-session-controller',
     title: 'Host Session Remote controller',
@@ -206,6 +259,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Lists the Session composition\'s user-invocable skills without activating a cold Agent.',
   },
   {
+    key: 'jobController',
+    pkg: 'api-job-controller',
+    title: 'Host job Remote controller',
+    mode: 'core',
+    note: 'Streams one background job\'s observation record over the generated Remote namespace; the roster stays on the session control stream.',
+  },
+  {
     key: 'credentialsController',
     pkg: 'api-settings-controller',
     title: 'Host credential-surface Remote controller',
@@ -225,6 +285,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Host workspace file Remote service',
     mode: 'core',
     note: 'Serves stat, paged text, byte windows, directory listings, and the change feed for files inside a Session\'s workspace root, confined by lstat, containment, and a stat re-check.',
+  },
+  {
+    key: 'workspaceChanges',
+    pkg: 'workspace-changes',
+    title: 'Host per-turn changed-file summaries',
+    mode: 'core',
+    note: 'Serves the summary each workspace/changes event announced and each listed file\'s turn-start and turn-end comparison, by Session and event sequence, until that Session is disposed; the log carries only the turn.',
   },
   {
     key: 'terminalController',
@@ -280,13 +347,20 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The JSONL backend persists the SessionEvent vocabulary as one artifact per Session.',
   },
   {
+    key: 'configEditor',
+    pkg: 'config-editor',
+    title: 'Profile configuration edits',
+    mode: 'core',
+    consumers: ['settings', 'agent-default-model'],
+    note: 'Persists profile config patches under the application file lock and HMR queue, then reconciles Loader entries.',
+  },
+  {
     key: 'settings',
     pkg: 'settings',
-    title: 'User-settings seam',
-    mode: 'seam',
-    implementations: ['settings-file'],
-    consumers: ['api-settings-controller', 'llm-deepseek', 'llm-pi-ai'],
-    note: 'Plugins register namespace schemas and resolve layered values; providers store the raw document. The LLM adapters register their entry config as the composition base under the user section; the settings controller serves redacted layered descriptors and writes the user layer.',
+    title: 'Plugin configuration forms',
+    mode: 'core',
+    consumers: ['api-settings-controller'],
+    note: 'Forms project volatile Config fields from active profile entries and delegate validated edits to config-editor. Plugins consume their own Config references.',
   },
   {
     key: 'subagentModelSelection',
@@ -306,6 +380,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Configuration carries references to secrets; providers own the values. Consumers resolve per operation, so a rotated credential reaches the very next request; the settings controller exposes value-free views and write-only storage.',
   },
   {
+    key: 'deepseekAccount',
+    pkg: 'deepseek-account',
+    title: 'DeepSeek account',
+    mode: 'seam',
+    implementations: ['deepseek-account-platform'],
+    consumers: ['api-account-controller', 'llm-deepseek'],
+    note: 'The Host owns browser authorization and local credentials; UI consumers receive state without tokens.',
+  },
+  {
     key: 'authorization',
     pkg: 'authorization',
     title: 'Authorization flow registry',
@@ -314,6 +397,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     consumers: ['llm-pi-ai'],
     note: 'Flows are registered by the plugin that knows how to obtain one credential and keyed by the record they write; the seam owns the conversation and the one-attempt-per-key lifecycle, never the protocol.',
   },
+  {
+    key: 'productTelemetry',
+    pkg: 'host-product-telemetry-otel',
+    title: 'Product usage event sender',
+    mode: 'service',
+    note: 'Exports explicitly submitted analytics events through OTLP/HTTP; mounting alone collects nothing.',
+  },
+
   {
     key: 'sessionTelemetry',
     pkg: 'session-telemetry',
@@ -428,10 +519,10 @@ const SERVICE_ROLES: ServiceRole[] = [
   },
   {
     key: 'agentPresets',
-    pkg: 'agent-presets',
+    pkg: 'agent-preset-registry',
     title: 'Per-session agent composition',
     mode: 'core',
-    note: 'Discovers preset directories over trusted and user-authored roots and mounts one preset cordis.yml under an agent scope during creation, rejecting a row that never activates or that publishes into the root service realm.',
+    note: 'Eagerly mounts YAML-declared preset revisions, binds Agents and cold readers to scoped contributions, and retains retired revisions until their last user releases them.',
   },
   {
     key: 'commands',
@@ -461,7 +552,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'skill',
     title: 'Skill provider registry',
     mode: 'seam',
-    implementations: ['skill-badge', 'skill-filesystem'],
+    implementations: ['skill-badge', 'skill-filesystem', 'skill-office'],
     consumers: ['tool-skill'],
     note: 'Merges provider skill catalogs; tool-skill renders the session-prefix catalog and loads complete skill bodies.',
   },
@@ -479,7 +570,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Default Agent model selection',
     mode: 'core',
     consumers: ['api-session-controller', 'headless'],
-    note: 'Layers the default ModelSelection through settings so direct and Host-backed Agent entry points share one state owner.',
+    note: 'Reads the default ModelSelection from volatile Config and saves selections through the profile editor.',
   },
   {
     key: 'agentLoop',
@@ -612,12 +703,21 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Providers implement transports; the service also owns optional Activation-based continuation orchestration, tool-subagent selects one-shot or continuable delegation, tool-subagent-control delivers follow-ups, and tool-ralph requires one fresh structured-output route.',
   },
   {
+    key: 'speechToText',
+    pkg: 'experimental-speech-to-text',
+    title: 'Experimental speech recognition providers',
+    mode: 'seam',
+    implementations: ['experimental-speech-to-text-sensevoice'],
+    consumers: ['experimental-api-speech-to-text'],
+    note: 'Routes explicit recognizers; the browser uses the authenticated Remote and keeps transcripts in the draft until submission.',
+  },
+  {
     key: 'agentTeams',
     pkg: 'experimental-agent-team',
     title: 'Agent Teams coordination domain',
     mode: 'core',
-    consumers: ['experimental-tool-agent-team', 'experimental-client-ui-agent-team'],
-    note: 'Owns the implicit-root roster, durable peer mailbox, shared task DAG, continuable-child lifecycle, and generated Team Remote methods; tool-agent-team contributes model controls and client-ui-agent-team mounts the browser contribution.',
+    consumers: ['experimental-tool-agent-team'],
+    note: 'Owns the implicit-root roster, durable peer mailbox, shared task DAG, and continuable-child lifecycle; tool-agent-team contributes model controls.',
   },
   {
     key: 'inspector',
@@ -632,8 +732,8 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Background job registry',
     mode: 'seam',
     implementations: ['jobs-local'],
-    consumers: ['tool-bash', 'tool-terminal', 'tool-subagent', 'tool-jobs'],
-    note: 'Producers (background bash, PTY sends, and subagent delegations) register running work; tool-jobs is the model-facing controller that reads, lists, and kills it; jobs-local is the process-local registry.',
+    consumers: ['tool-bash', 'tool-pwsh', 'tool-terminal', 'tool-subagent', 'tool-jobs', 'api-job-controller'],
+    note: 'Producers (background bash/pwsh, PTY sends, and subagent delegations) register running work; record-declaring jobs additionally stream raw output for non-consuming observers; tool-jobs is the model-facing controller that reads, lists, and kills it; jobs-local is the process-local registry.',
   },
   {
     key: 'web',
@@ -795,7 +895,7 @@ function renderCapabilitySeams(pkgs: Pkg[], services: readonly ServiceEntry[]): 
   const addEdge = (from: string, to: string): void => { edges.add(`  ${from} --> ${to}`) }
   const lines = generatedHeader('Capability Seams And Core Services')
   lines.push(
-    'A service can be a core spine service, a swappable capability seam, or a bundle/composition point. The graph shows the package that owns the service declaration, known implementation packages, and packages that consume the service directly.',
+    'A service can be a core spine service, a swappable capability seam, a bundle/composition point, or a standalone service. The graph shows the package that owns the service declaration, known implementation packages, and packages that consume the service directly.',
     '',
     '```mermaid',
     'flowchart LR',
@@ -1443,7 +1543,7 @@ function renderToolPipeline(): string {
   const maintenance = 'curated Mermaid flow; exact tool schemas and event signatures live in generated catalogs'
   return [
     ...generatedHeader('Tool Execution Pipeline'),
-    'This graph shows where policy, hooks, sandboxing, filesystem guards, result rewriting, final-outcome observation, and UI rendering run without changing the loop. The `tools/pre-execute` waterfall runs first, monotonic guards run next, and the `tools/execute` and `tools/post-execute` waterfalls follow; the three waterfalls may transform a call. Definition-owned `finalizeContent` and `tools/result` run afterward.',
+    'This graph shows where policy, hooks, sandboxing, filesystem guards, result rewriting, final-outcome observation, and UI rendering run without changing the loop. The `tools/pre-execute` waterfall runs first, monotonic guards run next, and the `tools/execute` and `tools/post-execute` waterfalls follow; the three waterfalls may transform a call. Definition-owned `projectContent` installs prepared content before post-execute; `finalizeContent` and `tools/result` run afterward.',
     '',
     '```mermaid',
     'flowchart TD',
@@ -1458,6 +1558,7 @@ function renderToolPipeline(): string {
     '  toolBody["Registered tool execute() body"]',
     `  fsGate["${mermaidCode('fs/write-intent')} or ${mermaidCode('fs/edit-intent')}<br/>tool-fs mutations only"]`,
     `  owned["Tool-owned session events<br/>${mermaidCode('todo/write')}, ${mermaidCode('fs/observed')}, ${mermaidCode('hook/invoked')}, ${mermaidCode('hook/result')}, ${mermaidCode('tool/ptc-dispatch')}"]`,
+    '  project["ToolDefinition.projectContent<br/>execution-prepared text and images"]',
     `  post["${mermaidCode('tools/post-execute')} waterfall<br/>accept, block, replace, add context"]`,
     '  normalized["Registry outer normalization<br/>pipeline/result snapshot throws become isError"]',
     '  finalize["ToolDefinition.finalizeContent<br/>last content-only invariant"]',
@@ -1479,13 +1580,15 @@ function renderToolPipeline(): string {
     '  approval -->|allowed-once| guards',
     '  approval -->|rejected, cancelled, unavailable| denied',
     '  approval -.->|throw| normalized',
-    '  denied --> post',
+    '  denied --> project',
     '  pre -.->|throw| normalized',
     '  toolBody --> fsGate',
     '  fsGate --> toolBody',
     '  toolBody --> owned',
     '  toolBody --> around',
-    '  around --> post',
+    '  around --> project',
+    '  project --> post',
+    '  project -.->|throw| normalized',
     '  around -.->|wrapper throws| normalized',
     '  post -.->|throw| normalized',
     '  post --> finalize',

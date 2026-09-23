@@ -305,26 +305,44 @@
   gap: 12px;
 }
 
-/* The two ways to gain a provider, as equal siblings spanning the same width
-   as the rows above. Wraps rather than shrinking below a legible label. */
+/* The one entry to the add card, spanning the same width as the rows above. */
 .addActions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
 }
 
 .addButton {
-  /* Overrides the shared button base above: these two are not pills sitting in
-     a footer but the last slot of the provider list, so they split the row
-     evenly and repeat the row cards' corner. Dashed, like every other "nothing
-     here yet" affordance on this page, to read as a place rather than a
-     command. */
+  /* Overrides the shared button base above: this is not a pill sitting in a
+     footer but the last slot of the provider list, so it fills the row and
+     repeats the row cards' corner. Dashed, like every other "nothing here yet"
+     affordance on this page, to read as a place rather than a command. */
   flex: 1 1 0;
   min-width: 180px;
   gap: 6px;
   height: 44px;
   border: 1px dashed var(--dsw-alias-border-l3);
   border-radius: 16px;
+}
+
+/* The add card's mode switch with the one-line purpose of the chosen mode
+   beneath it; the switch hugs its labels rather than spanning the card. */
+.addModes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* One panel per mode. Both stay mounted while the card is open; the hidden
+   attribute must win over the panel's own display, or the inactive draft
+   would show beneath the active one. */
+.addPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.addPanel[hidden] {
+  display: none;
 }
 
 .addCard,
@@ -397,11 +415,6 @@
   padding-top: 12px;
 }
 
-/* Model catalog: a table, not a stack of cards. The column captions are
-   written once above the rows, so a row is one line of fields plus its
-   delete control; each field still carries the indexed `aria-label` that
-   names it, and the caption strip is hidden from assistive tech to keep
-   that name from being announced twice. */
 .modelCatalog {
   display: flex;
   flex-direction: column;
@@ -431,12 +444,6 @@
   line-height: 18px;
 }
 
-/* Model list, shared with the pi-ai provider form: one bordered
-   entry per model, id and display name on the row, capacities behind the
-   row's own disclosure. The rules use this stylesheet's token vocabulary —
-   `--dsw-alias-border-subtle`, `--dsw-alias-text-tertiary`, and
-   `--dsw-alias-text-primary` are undefined here and would resolve to their
-   light-mode literals. */
 .modelList {
   display: flex;
   flex-direction: column;
@@ -497,7 +504,7 @@
 
 .modelAdvanced {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   padding: 8px 4px 2px;
 }
@@ -505,7 +512,29 @@
 .modelField {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   gap: 4px;
+}
+
+.modelInputTypes {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.modelInputTypes legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.modelInputChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-height: 32px;
+  align-items: center;
 }
 
 .modelFieldLabel {
@@ -678,9 +707,12 @@ select.input {
 
 .candidateId {
   flex: 1 1 auto;
+  min-width: 0;
   font-family: var(--ds-font-family-code);
   font-size: 13px;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .candidateEmpty {

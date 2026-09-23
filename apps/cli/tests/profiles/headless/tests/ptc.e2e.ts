@@ -28,6 +28,7 @@ import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import CordisHostRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
+import * as CordisInspectProviders from '@deepseek-ai/dsh-tool-cordis/host'
 
 /**
  * With-key PTC mode proof: a real model receives only `run_code`, composes two
@@ -277,9 +278,10 @@ describe('PTC mode typed values: keyless real-process contracts', () => {
     expect(ctx.jobs.list()).toEqual([])
   }, 15_000)
 
-  it('uses versioned Cordis DTO ids directly for running and pending Plugins, then confirms removal', async () => {
+  it('uses runtime inspection results directly through PTC', async () => {
     ctx = await typedPtcModeHarness()
     await ctx.plugin(CordisHostRunner)
+    await ctx.plugin(CordisInspectProviders)
     await ctx.plugin(ToolCordis)
     const agent = {
       id: SessionId('ptc-cordis'),
@@ -287,70 +289,15 @@ describe('PTC mode typed values: keyless real-process contracts', () => {
     } as unknown as Agent
 
     const value = completion(await runCode(ctx, `
-      const activeDefinition = await tools.cordis_define({
-        plugin: { kind: 'new', idPrefix: 'active' },
-        name: 'active-ptc-plugin',
-        purpose: 'prove an active Host half',
-        code: { host: "return { name: 'active-ptc-plugin', apply(ctx) {} }" },
+      const listed = await tools.cordis_inspect_list({});
+      const provider = listed.providers.find(item => item.id === 'Tool');
+      const inspected = await tools.cordis_inspect_query({
+        platform: provider.platform, provider: provider.id, method: provider.methods[0].name,
       });
-      const active = await tools.cordis_run({
-        pluginId: activeDefinition.pluginId,
-        packageId: activeDefinition.packageId,
-        mode: 'run',
-      });
-      const pendingDefinition = await tools.cordis_define({
-        plugin: { kind: 'new', idPrefix: 'queue' },
-        name: 'pending-ptc-plugin',
-        purpose: 'prove a Host half waiting for a Service',
-        code: { host: "return { name: 'pending-ptc-plugin', inject: ['missing-ptc-service'], apply(ctx) {} }" },
-      });
-      const pending = await tools.cordis_run({
-        pluginId: pendingDefinition.pluginId,
-        packageId: pendingDefinition.packageId,
-        mode: 'run',
-      });
-      const before = await tools.cordis_inspect_self({});
-      const removed = await tools.cordis_undefine({ pluginId: active.pluginId });
-      const after = await tools.cordis_inspect_self({});
-      await tools.cordis_undefine({ pluginId: pending.pluginId });
-      return {
-        active: {
-          pluginId: active.pluginId,
-          packageId: active.packageId,
-          pluginRunId: active.pluginRunId,
-          status: active.host.status,
-        },
-        pending: {
-          pluginId: pending.pluginId,
-          packageId: pending.packageId,
-          pluginRunId: pending.pluginRunId,
-          status: pending.host.status,
-          waitingFor: pending.host.waitingFor,
-        },
-        removed,
-        beforeContainsId: before.plugins.some(plugin => plugin.pluginId === active.pluginId),
-        afterContainsId: after.plugins.some(plugin => plugin.pluginId === active.pluginId),
-      };
+      return { provider: provider.id, names: inspected.data.tools.map(tool => tool.name) };
     `, testToolSignal, agent))
 
-    expect(value).toEqual({
-      active: {
-        pluginId: 'active-1',
-        packageId: 'pkg-1',
-        pluginRunId: 'run-1',
-        status: 'running',
-      },
-      pending: {
-        pluginId: 'queue-2',
-        packageId: 'pkg-2',
-        pluginRunId: 'run-2',
-        status: 'waiting',
-        waitingFor: ['missing-ptc-service'],
-      },
-      removed: { pluginId: 'active-1', wasRunning: true },
-      beforeContainsId: true,
-      afterContainsId: false,
-    })
+    expect(value).toEqual({ provider: 'Tool', names: ['cordis_inspect_list', 'cordis_inspect_query', 'run_code'] })
   })
 })
 

@@ -14,9 +14,14 @@ This tutorial installs the published Python SDK, runs the shipped standalone min
 
 ## Install the SDK
 
-### Linux and macOS
+<div>
+<a id="linux-and-macos"></a>
+<a id="windows-powershell"></a>
+</div>
 
-```sh
+::: code-group
+
+```sh [Linux/macOS]
 git clone https://github.com/deepseek-ai/deepseek-harness.git
 cd deepseek-harness
 python -m venv .venv
@@ -24,9 +29,7 @@ python -m venv .venv
 python -m pip install deepseek-harness-sdk
 ```
 
-### Windows PowerShell
-
-```powershell
+```powershell [Windows PowerShell]
 git clone https://github.com/deepseek-ai/deepseek-harness.git
 Set-Location deepseek-harness
 py -3.10 -m venv .venv
@@ -34,31 +37,43 @@ py -3.10 -m venv .venv
 python -m pip install deepseek-harness-sdk
 ```
 
+:::
+
 The installation includes a matching native runtime wheel and the `dsh` command. Normal SDK execution needs no system Node.js. Repository contributors who build the artifacts should use the [Python contributor workflow](../../../python/development.md).
 
 ## Run the checked-in example
 
 Export the credential and, when needed, a compatible proxy endpoint:
 
-### Linux and macOS
+<div>
+<a id="linux-and-macos-1"></a>
+<a id="windows-powershell-1"></a>
+</div>
 
-```sh
+::: code-group
+
+```sh [Linux/macOS]
 export DEEPSEEK_API_KEY=sk-your-key-here
 # export DEEPSEEK_BASE_URL=http://127.0.0.1:8000/v1
 ```
 
-### Windows PowerShell
-
-```powershell
+```powershell [Windows PowerShell]
 $env:DEEPSEEK_API_KEY = "sk-your-key-here"
 # $env:DEEPSEEK_BASE_URL = "http://127.0.0.1:8000/v1"
 ```
 
+:::
+
 Run one task with explicit workspace and home paths:
 
-### Linux and macOS
+<div>
+<a id="linux-and-macos-2"></a>
+<a id="windows-powershell-2"></a>
+</div>
 
-```sh
+::: code-group
+
+```sh [Linux/macOS]
 python python/sdk/examples/minimal.py \
   --workspace /absolute/path/to/disposable-workspace \
   --dsh-home /absolute/path/to/example-dsh-home \
@@ -66,15 +81,15 @@ python python/sdk/examples/minimal.py \
   "Inspect the repository and fix the failing tests."
 ```
 
-### Windows PowerShell
-
-```powershell
+```powershell [Windows PowerShell]
 python python/sdk/examples/minimal.py `
   --workspace C:\work\disposable-workspace `
   --dsh-home C:\work\example-dsh-home `
   --session-id example-001 `
   "Inspect the repository and fix the failing tests."
 ```
+
+:::
 
 The script prints the final assistant response. The selected home receives the generated `sdk-minimal` profile, installed plugins, and uncompressed JSONL session logs under `sessions/`. The example and SDK never silently read `~/.dsh`.
 
@@ -109,21 +124,26 @@ The SDK starts the bundled `dsh --profile sdk-minimal` process lazily and reuses
 
 Use `dsh plugin` for dependencies and bundle layers that should persist in this home:
 
-### Linux and macOS
+<div>
+<a id="linux-and-macos-3"></a>
+<a id="windows-powershell-3"></a>
+</div>
 
-```sh
+::: code-group
+
+```sh [Linux/macOS]
 export DSH_HOME=/absolute/path/to/example-dsh-home
 dsh --profile sdk-minimal --dump-default-config >/dev/null
 dsh plugin --profile sdk-minimal add file:/absolute/path/to/my-plugin-bundle
 ```
 
-### Windows PowerShell
-
-```powershell
+```powershell [Windows PowerShell]
 $env:DSH_HOME = "C:\work\example-dsh-home"
 dsh --profile sdk-minimal --dump-default-config | Out-Null
 dsh plugin --profile sdk-minimal add file:C:/work/my-plugin-bundle
 ```
+
+:::
 
 The first command initializes the shipped standalone profile. The second forwards package management to `pnpm`, then records any installed package that exports a `dsh.bundle` layer. Install `pnpm` only for this management command; launching the installed SDK does not need it. Edit `$DSH_HOME/profiles/sdk-minimal/cordis.patch.yml` for persistent row changes, or pass patch files from Python for per-launch changes.
 

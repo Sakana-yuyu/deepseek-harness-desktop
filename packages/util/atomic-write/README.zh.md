@@ -33,7 +33,7 @@ kind: "package-library"
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 
 declare const text: string
-await writeFileAtomic('/home/u/.dsh/settings.yaml', text, { mode: 0o600 })
+await writeFileAtomic('/home/u/.dsh/cordis.patch.yml', text, { mode: 0o600 })
 ```
 
 父目录会按需创建，读取方只会观察到旧内容或完整的新内容。在 Windows 上，报告为 `EACCES`、`EBUSY` 或 `EPERM` 的瞬时替换干扰会在有界时间内重试；任何剩余失败都会移除临时文件，并保持目标文件不变。
@@ -48,15 +48,17 @@ import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 declare const render: (previous: string) => string
 declare const readCurrent: () => Promise<string>
 
-await withFileLock('/home/u/.dsh/settings.yaml', async () => {
+await withFileLock('/home/u/.dsh/cordis.patch.yml', async () => {
   const previous = await readCurrent()
-  await writeFileAtomic('/home/u/.dsh/settings.yaml', render(previous), { mode: 0o600 })
+  await writeFileAtomic('/home/u/.dsh/cordis.patch.yml', render(previous), { mode: 0o600 })
 })
 ```
 
 只有写入方会竞争——读取方从不取锁——竞争者按指数退避，超时后报错，而不是无限阻塞。竞争者等待多久由每次调用经 `waitMs` 声明：默认值只按纯文件工作量级选定，因此持锁方循环若包含一次网络往返——例如刷新过期 token 的凭据变更——就应声明更长的值，否则该文件的其他写入方在这段时间内都会失败。退避节奏保持固定。竞争者绝不移除已有锁，因为文件存续时间无法证明其持有者已经停止。
 
 ### 需要规划的失败
+
+Windows 在无法观察到锁时会对 `EPERM` 重试一次，因为持锁方可能在独占创建与存在性检查之间释放锁。再次出现无法确认锁存在的 `EPERM` 时，会重新抛出错误且不运行操作。
 
 锁的父目录必须已经存在，因此 `withFileLock` 会在运行操作之前拒绝无效的父目录层级。持锁进程退出时会把锁文件留在原地；后续写入方超时失败，操作者只有在确认没有写入方仍持有该锁后才会移除它。
 
@@ -98,7 +100,7 @@ await withFileLock('/home/u/.dsh/settings.yaml', async () => {
 
 当你需要了解使用本原语的存储或它所属的工具家族时，阅读以下页面。
 
-- [用户设置文件存储](../../settings/settings-file/README.zh.md)——每次写入都通过本包替换的设置文档。
+- [用户设置文件存储](../../boot/config-editor/README.zh.md)——每次写入都通过本包替换的设置文档。
 - [凭据存储](../../credentials/credentials-local/README.zh.md)——本包加锁并替换的凭据文件。
 - [util 组映射](../README.zh.md)——本包所属的零依赖工具家族。
 

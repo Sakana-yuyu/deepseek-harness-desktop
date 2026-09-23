@@ -40,9 +40,11 @@ kind: "package-reference"
 
 绝对可执行文件路径会被验证；裸名称根据清理后的 PATH 并以平台感知的可执行文件扩展名（Windows 上为 `.COM`/`.EXE`/`.BAT`/`.CMD`）解析。含分隔符的相对路径会被拒绝——请提供绝对路径或裸 PATH 名称——相对 PATH 条目从宿主进程 cwd 解析。
 
+Windows 普通子进程通过 `windowsHide` 启动私有 Job runner，并为原生目标请求隐藏初始窗口。标准流和 Job 归属不依赖窗口可见性；显式创建自身窗口的命令不在此保证范围内。
+
 ### 收集输出
 
-收集模式在内存中保留一条流的最后 `maxBytes`——错误与最终结果通常聚集在末尾——并在配置了 `spill` 上限时把完整流追加到 OS 临时目录下每进程目录中的私有文件（`0700` 目录、`0600` 随机命名文件）。某条流大于 spill 上限时，会丢弃不完整的 spill，只返回带截断标记的尾部。读取基于偏移量且从不消费，因此后台读取与批量读取在退出前后都可以共存。
+收集模式在内存中保留一条流的最后 `maxBytes`——错误与最终结果通常聚集在末尾——并在配置了 `spill` 上限时把完整流追加到 OS 临时目录下每进程目录中的私有文件（`0700` 目录、`0600` 随机命名文件）。某条流大于 spill 上限时，会丢弃不完整的 spill，只返回带截断标记的尾部。spill 是尽力而为：当 spill 文件无法打开或追加（每进程目录被临时文件清理工具删除、`EACCES`、`EMFILE`、`ENOSPC`）时，收集器丢弃该 spill，通过插件 logger 记录一条 `error`，并继续收集内存尾部，因此结果带截断标记且没有 spill 路径。读取基于偏移量且从不消费，因此后台读取与批量读取在退出前后都可以共存。
 
 `./output` 导出向进程适配器共享该收集器与保留 spill 的存储。`snapshot()` 返回保留的原始字节及总字节数，使远程适配器能够保留偏移量，而无需转发完整的流。
 
@@ -50,9 +52,14 @@ kind: "package-reference"
 
 普通 spawn 可以请求 [subprocess 控制管道](../subprocess/README.zh.md#using-a-control-pipe)。Node 目标在所有受支持的宿主上均收到 fd 7；Windows 描述符编号依赖 CRT 初始化。POSIX runner 在 `execve` 时保留该描述符；Windows Job 和 ACL runner 在 Node 初始化前通过子进程的 CRT 启动表建立它，并在 spawn 后关闭自身的承载副本。标准流与 runner 的私有管理通道保持独立。
 
+<a id="running-terminal-sessions"></a>
 ### 运行终端会话
 
 `spawnTerminal` 分配真实 PTY 并桥接 UTF-8 文本；你可以检查当前前台进程组并向其发送信号，还可以等待一次 `terminate()` 操作。在受支持的 Linux 宿主上，原始终端 argv 直接在 user-systemd scope 内运行；node-pty PID、会话 leader、控制终端、前台 `inputWaiting` 与就绪状态保持不变，而 scope 会拥有已重新设定父进程或调用 `setsid` 的后代。在 fallback 宿主上，清理会保留根进程树和可观察会话中的精确身份，但无法重新发现每个已经逃逸的后代。Linux 的精确输入等待要求前台线程的 fd 0 标识 shell 的控制终端，且线程当前的 syscall 正在等待该 fd；如果内核拒绝 syscall 探测，上层 PTY 后端会改用空闲推断。在 Windows 上，SIGINT 以 Ctrl-C 输入写入投递，SIGTSTP 与 SIGHUP 不受支持，拆卸会通过进程表验证 shell 已终止，因为被外部终止的 shell 可能永远不会触发 PTY 退出通知。
+
+使用 `shellActivity: true` 时，普通非登录的 `bash -i` 与 `zsh -i` 会安装私有生命周期记录，同时保留用户启动文件和提示符配置。Bash 需要 4.4 或更高版本，并允许写入提示符 hook；Zsh 观察空的顶层 ZLE 提示符，排除 `vared`、选择和续行提示符。输入、shell 状态迁移和进程观察变化都会推进活动 revision。前台、后台及停止的后代任务阻止空闲判断；原生 Linux 还要求 systemd scope 中恰好只有一个 task，覆盖进程树以外仍归其所有的工作；进程表扫描不完整、自定义 trap 和 Zsh 异步文件描述符 handler 会返回 unknown。进程表枚举失败会拒绝本次观察；活动保持 unknown，清理保留所有权，直到进程表可读并能完成验证。进程清理成功后删除私有文件。其他 shell、Windows、自定义参数以及经 sandbox 包装的可执行文件仍可使用，但活动为 unknown。
+
+启用后，根进程退出不会终止仍在运行的后代。明确为空的 Linux 受管范围或完整且为空的 Linux 会话可允许回收保留的记录；macOS 无法在根进程退出后确认未观察到的进程范围，会将该记录保持为 unknown。原有 fallback 可见性限制仍然适用：shell 生命周期记录不能让已逃逸且未观察到的后代变得可发现。这些记录协调普通 shell 行为，不用于防御同一用户的恶意进程。
 
 ### 关闭行为
 
@@ -102,7 +109,7 @@ Linux 普通进程和终端进程即使在 bootstrap 消费启动请求前被取
 
 ### 安全不变式
 
-spill 文件以 `0600` 权限、`O_EXCL` 与随机名称在 `0700` 每进程目录下创建，可抵御共享临时目录中的符号链接植入；最终关闭失败时不公布 spill 路径。fallback 进程身份携带启动时间，因此清理绝不会跟随 PID 复用。选定的 native 路径失败时会报告错误，而不会通过 fallback 重放 argv；受管范围只有在清理完成后才从存活集合移除，否则失败仍保持可观察。宿主退出最终清理不创建 Promise 或定时器，保留宿主退出码与诊断，分别包含每个目标的失败，也不会声称已经完全停稳。
+spill 文件以 `0600` 权限、`O_EXCL` 与随机名称在 `0700` 每进程目录下创建，可抵御共享临时目录中的符号链接植入；打开、追加或最终关闭失败时不公布 spill 路径，且绝不中断收集，因为收集运行在流的 `'data'` 监听器内，抛出的错误会杀死宿主进程。fallback 进程身份携带启动时间，因此清理绝不会跟随 PID 复用。选定的 native 路径失败时会报告错误，而不会通过 fallback 重放 argv；受管范围只有在清理完成后才从存活集合移除，否则失败仍保持可观察。宿主退出最终清理不创建 Promise 或定时器，保留宿主退出码与诊断，分别包含每个目标的失败，也不会声称已经完全停稳。
 
 </details>
 
@@ -148,6 +155,7 @@ spill 文件以 `0600` 权限、`O_EXCL` 与随机名称在 `0700` 每进程目�
 - **进程内清理要求退出阶段仍能执行 JavaScript**——直接 `process.exit()`、默认未捕获异常和默认未处理 rejection 会发出 Node 同步 `exit` 事件。未安装 handler 时，`SIGTERM`、`SIGINT` 或 `SIGHUP` 的默认 OS 处置不会发出该事件；应用只有安装执行正常 dispose 或调用 `process.exit()` 的 handler 才能覆盖这些信号。`SIGKILL`、fatal OOM、`process.abort()`、native crash、断电，以及任何无法运行 JavaScript 的故障，都需要外部 supervisor、容器 init 或等价的 OS owner 负责。
 - **凭据清除依赖名称启发式规则**——只匹配 `*KEY*`／`*PASSWORD*`／`*SECRET*`／`*TOKEN*`；名称不同的 secret（例如 `*PASSPHRASE*`）会继续传递，对误删变量引入白名单属于已记录的后续工作。
 - **不会删除已完成的 spill 文件**——有界的完整输出恢复文件会在 OS tmpdir 下累积，直到外部机制进行清理；每进程私有 spill 目录仅在未持有任何已完成 spill 文件时于 JavaScript 可观察的退出阶段删除。
+- **被删除的 spill 目录不会重建**——每进程私有目录只创建一次；被外部清理工具删除后，该进程内之后的每次 spill 都降级为内存尾部并记录一条 `error`，直到宿主重启。在 `ENOENT` 时重新创建一个新的随机目录是待办工作。
 
 <a id="dev-note"></a>
 ### 开发备注

@@ -8,7 +8,7 @@ import type {
   ModelCatalogFailure, ModelProviderGroup, ModelSelection, ModelSelectionProjection,
 } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
-import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
+import type { RemoteResult, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ModelCatalogDirectory } from './catalog.ts'
@@ -82,10 +82,11 @@ export class ModelDirectory {
   /**
    * Select the complete provider/model/reasoning selection. The durable
    * projection frame updates the shared current; failures surface on the store
-   * and throw so each entry's own retry surface engages.
+   * and return with the operation so each entry can present its own failure.
    * @param selection - provider, provider-owned model id, and optional adapter-owned effort.
- */
-  async select(selection: ModelSelection): Promise<void> {
+   * @returns the selection outcome, including the original Remote failure.
+   */
+  async select(selection: ModelSelection): Promise<RemoteResult<void>> {
     this.assertAvailable()
     const generation = ++this.generation
     this.store.update((s) => { s.status = 'selecting'; s.error = null })
@@ -98,15 +99,18 @@ export class ModelDirectory {
         : { reasoningEffort: selection.reasoningEffort },
     })
     if (this.disposed || generation !== this.generation) {
-      if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
-      return
+      return result.ok ? { ok: true, value: undefined } : result
     }
     if (!result.ok) {
-      this.store.update((s) => { s.status = 'error'; s.error = `${result.error.code}: ${result.error.message}` })
-      throw new Error(`session.selectModel failed: ${result.error.code}: ${result.error.message}`)
+      this.store.update((s) => {
+        s.status = 'error'
+        s.error = `${result.error.code}: ${result.error.message}`
+      })
+      return result
     }
     this.store.update((s) => { s.status = 'ready'; s.error = null })
     this.syncInputs()
+    return { ok: true, value: undefined }
   }
 
   /**

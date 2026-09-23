@@ -14,8 +14,9 @@
  */
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { WeakMapWithValues } from '@deepseek-ai/dsh-util-values'
 import { ModelCatalogDirectory } from './catalog.ts'
 import { ModelDirectory } from './directory.ts'
 
@@ -27,15 +28,15 @@ declare module '@deepseek-ai/cordis' {
 
 /** Live mutable state in one holder (service methods run behind the caller-ctx tracker). */
 interface LiveState {
-  /** Per-session directories; entries are deleted by their scope disposer. */
-  readonly directories: Map<SessionId, ModelDirectory>
+  /** Directories keyed by Client binding, removed by their scope disposer. */
+  readonly directories: WeakMapWithValues<SessionBinding, ModelDirectory>
 }
 
 /** The `ctx.modelDirectories` session model-selection service. */
 export class ModelDirectoryResolver extends Service {
   static inject = ['sessions', 'remote', 'remote.session']
 
-  private readonly live: LiveState = { directories: new Map() }
+  private readonly live: LiveState = { directories: new WeakMapWithValues() }
   private readonly catalog: ModelCatalogDirectory
 
   /** Localized composer-block copy; this plugin owns the string it raises. */
@@ -52,7 +53,7 @@ export class ModelDirectoryResolver extends Service {
     void this.catalog.load().catch(() => { /* selectors expose the shared error */ })
     ctx.on('connection/reset', () => {
       this.catalog.resetGeneration()
-      for (const directory of this.live.directories.values()) directory.resetConnected()
+      for (const directory of this.live.directories.values) directory.resetConnected()
     })
     ctx.remote.$on('llm/adapters-updated', () => { this.catalog.refresh() })
     ctx.remote.$on('settings/document-updated', () => { this.catalog.refresh() })
@@ -67,13 +68,13 @@ export class ModelDirectoryResolver extends Service {
    */
   directoryFor(sessionId: SessionId): ModelDirectory {
     const { live } = this
-    const existing = live.directories.get(sessionId)
-    if (existing !== undefined) return existing
     const sessions = this.ctx.sessions
     const actx = sessions.scope(sessionId)
     if (actx === undefined) throw new Error(`ui-model-selection: session "${String(sessionId)}" resolved no scope`)
     const binding = sessions.binding(sessionId)
     if (binding === undefined) throw new Error(`ui-model-selection: session "${String(sessionId)}" resolved no binding`)
+    const existing = live.directories.get(binding)
+    if (existing !== undefined) return existing
     const directory = new ModelDirectory(
       this.ctx.remote.session,
       sessionId,
@@ -81,7 +82,7 @@ export class ModelDirectoryResolver extends Service {
       this.catalog,
       binding.session.projections.faceOf('modelSelection'),
     )
-    live.directories.set(sessionId, directory)
+    live.directories.set(binding, directory)
     // The composer cannot read this plugin (the dependency runs one way), so
     // the block is pushed: the Host says whether an adapter serves the
     // session's route, and only a definite `false` makes the input inert.
@@ -90,6 +91,7 @@ export class ModelDirectoryResolver extends Service {
     const conversation = this.ctx.get('conversation')
     if (conversation !== undefined) {
       const publish = (): void => {
+        if (sessions.binding(sessionId) !== binding) return
         conversation.blocks.set(sessionId, directory.store.getSnapshot().routable === false
           ? { reason: this.blockReason() }
           : undefined)
@@ -99,13 +101,15 @@ export class ModelDirectoryResolver extends Service {
         const stop = directory.store.subscribe(publish)
         return () => {
           stop()
+          const current = sessions.binding(sessionId)
+          if (current !== undefined && current !== binding && live.directories.get(current) !== undefined) return
           conversation.blocks.set(sessionId, undefined)
         }
       }, 'ui-model-selection: composer block')
     }
     actx.effect(() => () => {
       directory.dispose()
-      live.directories.delete(sessionId)
+      live.directories.delete(binding)
     }, 'ui-model-selection: session directory')
     return directory
   }

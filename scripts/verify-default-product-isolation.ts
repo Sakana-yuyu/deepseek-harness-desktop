@@ -1,4 +1,8 @@
-/** Keep experimental packages outside default installations, runtime imports, and shipped compositions. */
+/**
+ * Keep experimental packages outside default installations, runtime imports, and shipped compositions.
+ * The one declared exception is a bundle the launcher names in `OPTIONAL_BUNDLES`: shipped for the person to
+ * switch on, selected by no shipped template, its own dependency graph outside the default product's.
+ */
 
 import { existsSync, globSync, readFileSync, statSync } from 'node:fs'
 import { basename, dirname, extname, relative, resolve } from 'node:path'
@@ -8,16 +12,19 @@ import ts from 'typescript'
 import { applyEntryPatches, type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { loadOverlayPatches } from '../packages/boot/app-boot/src/index.ts'
-import { composeEntries } from '../packages/boot/app-boot/src/profile.ts'
-import { isCordisGroupEntry, loadCordisYaml } from './cordis-yaml.ts'
+import { bundlePatchPaths, composeEntries } from '../packages/boot/app-boot/src/profile.ts'
+import type { DshBundleManifest } from '../packages/util/package-manifest/src/types.ts'
+import { isAgentPresetEntry, isCordisGroupEntry, loadCordisYaml } from './cordis-yaml.ts'
 import {
   collectRuntimeLocalSourceSpecifiers,
   collectRuntimeSourceSpecifiers,
 } from './verify-client-packages.ts'
 
 const EXPERIMENTAL_PREFIX = '@deepseek-ai/dsh-experimental-'
+// The independently published entry package owns platform-engine dependencies.
+const EXTERNAL_KIT_PACKAGES = new Set(['@deepseek-ai/libreoffice-kit'])
 const PROFILE_SOURCE = 'packages/boot/app-boot/src/profile.ts'
-const PRESET_PATTERN = 'packages/preset/agent-presets/presets/*/agent.cordis.yml'
+const PRESET_PATTERN = 'packages/bundle/web-app/presets/*.patch.yml'
 const RUNTIME_SECTIONS = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const
 
 interface Manifest {
@@ -26,7 +33,7 @@ interface Manifest {
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   devDependencies?: Record<string, string>
-  dsh?: { bundle?: { patch?: string }; configTrees?: Array<{ path: string }> }
+  dsh?: { bundle?: DshBundleManifest; configTrees?: Array<{ path: string }> }
 }
 
 interface Package {
@@ -68,8 +75,21 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
   for (const path of ['apps/cli/package.json', 'apps/web/package.json', 'python/sdk-runtime/package.json']) {
     if (!existsSync(resolve(root, path))) failures.push(`missing default product root ${path}`)
   }
-  if (directories.get(resolve(root, 'apps/cli'))?.manifest.name !== '@deepseek-ai/dsh') {
+  const cli = directories.get(resolve(root, 'apps/cli'))
+  if (cli?.manifest.name !== '@deepseek-ai/dsh') {
     failures.push('apps/cli/package.json must identify @deepseek-ai/dsh')
+  }
+  // The bundles the launcher ships switched off: each a runtime dependency of the installation that is a bundle, none a default.
+  const profilePath = resolve(root, PROFILE_SOURCE)
+  const selection = existsSync(profilePath) ? profilePackages(readFileSync(profilePath, 'utf8')) : undefined
+  const optionalBundles = new Set(selection?.optionalBundles ?? [])
+  for (const name of optionalBundles) {
+    if (cli?.manifest.dependencies?.[name] === undefined) {
+      failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must be a runtime dependency of apps/cli`)
+    }
+    if (packages.get(name)?.manifest.dsh?.bundle?.patch === undefined) {
+      failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must declare dsh.bundle.patch`)
+    }
   }
 
   const queue: Package[] = []
@@ -112,6 +132,7 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
     }
     const pkg = packages.get(packageName)
     if (pkg !== undefined) add(pkg, origin)
+    else if (EXTERNAL_KIT_PACKAGES.has(packageName)) return
     else if (packageName.startsWith('@deepseek-ai/')) failures.push(`${origin}: unknown workspace package ${name}`)
   }
   const dependency = (name: string, range: string, owner: Package, origin: string): void => {
@@ -165,6 +186,7 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       if (isCordisGroupEntry(entry) || entry.name === 'cordis:group' && Array.isArray(entry.config)) {
         (entry.config as unknown[]).forEach(visit)
       }
+      if (isAgentPresetEntry(entry)) entry.config.plugins.forEach(visit)
       if (Array.isArray(entry.insert)) entry.insert.forEach(visit)
       if ((entry.name === '@deepseek-ai/cordis-plugin-include' || entry.name === 'cordis:include') && isRecord(entry.config)) {
         if (!composedWeb && Array.isArray(entry.config.patches)) entry.config.patches.forEach(visit)
@@ -208,20 +230,19 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
     const path = display(pkg.directory)
     if (path.startsWith('apps/') || path === 'python/sdk-runtime') add(pkg, path)
   }
-  const profilePath = resolve(root, PROFILE_SOURCE)
-  if (existsSync(profilePath)) {
-    const selection = profilePackages(readFileSync(profilePath, 'utf8'))
+  if (selection !== undefined) {
     for (const name of selection.packages) {
       reference(name, PROFILE_SOURCE)
       if (packages.get(name)?.manifest.dsh?.bundle?.patch === undefined) {
         failures.push(`${PROFILE_SOURCE}: default bundle ${name} must declare dsh.bundle.patch`)
       }
+      if (optionalBundles.has(name)) failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must not be a default bundle`)
     }
     const webLayers = selection.webBundles.flatMap((name) => {
       const pkg = packages.get(name)
-      const patch = pkg?.manifest.dsh?.bundle?.patch
-      if (pkg === undefined || patch === undefined) return []
-      return [loadOverlayPatches('verify-default-product-isolation', resolve(pkg.directory, patch))]
+      const bundle = pkg?.manifest.dsh?.bundle
+      if (pkg === undefined || bundle === undefined) return []
+      return [bundlePatchPaths(pkg.directory, bundle).flatMap(file => loadOverlayPatches('verify-default-product-isolation', file))]
     })
     if (webLayers.length !== selection.webBundles.length) {
       failures.push(`${PROFILE_SOURCE}: default Web bundle layers are incomplete`)
@@ -262,10 +283,11 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
     const { manifest } = pkg
     for (const section of RUNTIME_SECTIONS) {
       for (const [name, range] of Object.entries(manifest[section] ?? {})) {
+        if (pkg === cli && section === 'dependencies' && optionalBundles.has(name)) continue
         dependency(name, range, pkg, `${manifest.name} ${section}`)
       }
     }
-    if (manifest.dsh?.bundle?.patch !== undefined) scanConfig(resolve(pkg.directory, manifest.dsh.bundle.patch))
+    for (const file of manifest.dsh?.bundle === undefined ? [] : bundlePatchPaths(pkg.directory, manifest.dsh.bundle)) scanConfig(file)
     for (const tree of manifest.dsh?.configTrees ?? []) {
       const treePath = resolve(pkg.directory, tree.path)
       const files = existsSync(treePath) && statSync(treePath).isDirectory()
@@ -275,9 +297,12 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
     }
     if (display(pkg.directory) === 'apps/web') continue
     const files = globSync('src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}', { cwd: pkg.directory,
-      exclude: ['**/*.spec.*', '**/*.test.*', '**/*.d.ts', '**/tests/**', '**/__tests__/**'] })
+      exclude: ['**/*.spec.*', '**/*.test.*', '**/*.d.ts', '**/tests/**', '**/__tests__/**', '**/node_modules/**'] })
     if (display(pkg.directory) === 'apps/cli' && files.length === 0) failures.push('apps/cli: no default runtime sources')
-    for (const path of files) scanSource(resolve(pkg.directory, path))
+    for (const path of files) {
+      const sourcePath = resolve(pkg.directory, path)
+      if (statSync(sourcePath).isFile()) scanSource(sourcePath)
+    }
   }
   return { failures: [...new Set(failures)], packageCount: visited.size,
     sourceCount: sources.size, configCount: configs.size, webPluginCount }
@@ -319,16 +344,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Read the literal package lists that define installation-owned profile defaults. */
-function profilePackages(source: string): { packages: string[]; webBundles: string[] } {
+/** Read the literal package lists that define installation-owned profile defaults and the optional bundles it ships. */
+function profilePackages(source: string): { packages: string[]; webBundles: string[]; optionalBundles: string[] } {
   const file = ts.createSourceFile(PROFILE_SOURCE, source, ts.ScriptTarget.Latest, true)
   const required = new Set(['PROFILE_TEMPLATES', 'DEFAULT_PROFILE_BUNDLES'])
   const found = new Set<string>()
   const packages: string[] = []
   const webBundles: string[] = []
+  const optionalBundles: string[] = []
   const literals = (node: ts.Node, path: string[]): void => {
     if (ts.isStringLiteralLike(node)) {
-      if (node.text.startsWith('@')) packages.push(node.text)
+      if (path[0] === 'OPTIONAL_BUNDLES') optionalBundles.push(node.text)
+      else if (node.text.startsWith('@')) packages.push(node.text)
       if (path.join('.') === 'PROFILE_TEMPLATES.web.bundles') webBundles.push(node.text)
     } else if (ts.isArrayLiteralExpression(node)) node.elements.forEach((child) => { literals(child, path) })
     else if (ts.isObjectLiteralExpression(node)) node.properties.forEach((child) => { literals(child, path) })
@@ -346,17 +373,20 @@ function profilePackages(source: string): { packages: string[]; webBundles: stri
     if (!ts.isVariableStatement(statement)) continue
     for (const declaration of statement.declarationList.declarations) {
       if (!ts.isIdentifier(declaration.name)
-        || !required.has(declaration.name.text) && declaration.name.text !== 'INSTALLATION_OWNED_PROFILE_TUPLES') continue
+        || !required.has(declaration.name.text) && declaration.name.text !== 'INSTALLATION_OWNED_PROFILE_TUPLES'
+        && declaration.name.text !== 'OPTIONAL_BUNDLES') continue
       if (declaration.initializer === undefined) continue
       if (required.has(declaration.name.text)) found.add(declaration.name.text)
       const before = packages.length
       literals(declaration.initializer, [declaration.name.text])
-      if (packages.length === before) throw new Error(`${PROFILE_SOURCE}: ${declaration.name.text} has no default bundles`)
+      if (declaration.name.text !== 'OPTIONAL_BUNDLES' && packages.length === before) {
+        throw new Error(`${PROFILE_SOURCE}: ${declaration.name.text} has no default bundles`)
+      }
     }
   }
   if (found.size !== required.size) throw new Error(`${PROFILE_SOURCE}: missing default profile declarations`)
   if (webBundles.length === 0) throw new Error(`${PROFILE_SOURCE}: missing default Web bundle list`)
-  return { packages, webBundles }
+  return { packages, webBundles, optionalBundles }
 }
 
 if (import.meta.main) {

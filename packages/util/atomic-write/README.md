@@ -33,7 +33,7 @@ Use `writeFileAtomic` when a file-backed store must replace one already-rendered
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 
 declare const text: string
-await writeFileAtomic('/home/u/.dsh/settings.yaml', text, { mode: 0o600 })
+await writeFileAtomic('/home/u/.dsh/cordis.patch.yml', text, { mode: 0o600 })
 ```
 
 Parent directories are created as needed, and readers observe either the old or the new complete content. On Windows, transient replacement interference reported as `EACCES`, `EBUSY`, or `EPERM` is retried for a bounded interval; any remaining failure removes the temporary file and leaves the target untouched.
@@ -48,15 +48,17 @@ import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 declare const render: (previous: string) => string
 declare const readCurrent: () => Promise<string>
 
-await withFileLock('/home/u/.dsh/settings.yaml', async () => {
+await withFileLock('/home/u/.dsh/cordis.patch.yml', async () => {
   const previous = await readCurrent()
-  await writeFileAtomic('/home/u/.dsh/settings.yaml', render(previous), { mode: 0o600 })
+  await writeFileAtomic('/home/u/.dsh/cordis.patch.yml', render(previous), { mode: 0o600 })
 })
 ```
 
 Only writers contend — readers never take the lock — and a contender backs off exponentially and fails with a timed-out error rather than blocking forever. How long a contender waits is stated per call through `waitMs`: the default is sized for file work alone, so a holder whose cycle includes a network round trip — a credential mutation that refreshes an expired token — states a longer one, because leaving the default would fail every other writer of that file for the duration. The retry cadence stays fixed. A contender never removes an existing lock, because file age cannot prove that its owner stopped.
 
 ### Failures to plan for
+
+Windows retries one `EPERM` when the lock cannot be observed, because its holder can release between exclusive creation and the existence check. A repeated unconfirmed `EPERM` is rethrown without running the operation.
 
 The lock's parent directory must already exist, so `withFileLock` rejects an invalid parent hierarchy before running the operation. A process that exits while holding the lock leaves the lock sibling behind; later writers time out, and an operator removes it only after verifying that no writer still owns it.
 
@@ -98,7 +100,7 @@ The package is built on one separation: the atomic commit owns the swap, and the
 
 Read these pages when you need the consuming stores or the family this primitive belongs to.
 
-- [User-settings file store](../../settings/settings-file/README.md) — the settings document every write replaces through this package.
+- [Profile configuration editor](../../boot/config-editor/README.md) — the profile patch every edit replaces through this package.
 - [Credentials store](../../credentials/credentials-local/README.md) — the credentials file this package locks and replaces.
 - [util group map](../README.md) — the zero-dependency utility family this package belongs to.
 

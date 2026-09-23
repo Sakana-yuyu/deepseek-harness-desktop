@@ -9,6 +9,7 @@
     "src/index.ts",
     "src/types.ts",
     "src/terminal.ts",
+    "src/retention.ts",
     "src/stream.ts",
     "src/shells.ts"
   ],

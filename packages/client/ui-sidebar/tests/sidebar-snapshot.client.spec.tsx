@@ -96,4 +96,19 @@ describe('sidebar shell snapshots', () => {
     expect(slot.view.queryByRole('button', { name: '新建会话' })).toBeNull()
     await runtime.dispose()
   })
+
+  it('renders Windows caption controls in expanded and collapsed states', async () => {
+    document.documentElement.setAttribute('data-windows-titlebar', '')
+    const { runtime } = await bench({ locale: 'en' })
+    try {
+      const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300 })
+      expect(slot.container).toMatchSnapshot('windows expanded')
+      slot.update({ collapsed: true, width: 0 })
+      expect(slot.view.getAllByRole('button', { name: 'New session' })).toHaveLength(1)
+      expect(slot.container).toMatchSnapshot('windows collapsed')
+    } finally {
+      await runtime.dispose()
+      document.documentElement.removeAttribute('data-windows-titlebar')
+    }
+  })
 })

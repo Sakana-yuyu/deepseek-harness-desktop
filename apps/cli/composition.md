@@ -8,9 +8,13 @@ The dsh-base bundle patch shared by the web, headless, sdk, and acp profiles; th
 ```mermaid
 flowchart LR
   cfg["packages/bundle/base/cordis.patch.yml<br/>cordis.yml"]
+  plugin_dsh_base_tool_plugin_manager["tool-plugin-manager<br/>@deepseek-ai/dsh-plugin-manager/tools"]
+  cfg --> plugin_dsh_base_tool_plugin_manager
+  plugin_dsh_base_plugin_manager["plugin-manager<br/>@deepseek-ai/dsh-plugin-manager"]
+  cfg --> plugin_dsh_base_plugin_manager
   plugin_dsh_base_timer["timer<br/>@deepseek-ai/cordis-plugin-timer"]
   cfg --> plugin_dsh_base_timer
-  plugin_dsh_base_hmr["hmr<br/>@deepseek-ai/cordis-plugin-hmr"]
+  plugin_dsh_base_hmr["hmr<br/>@deepseek-ai/dsh-hmr"]
   cfg --> plugin_dsh_base_hmr
   plugin_dsh_base_llm["llm<br/>@deepseek-ai/dsh-llm"]
   cfg --> plugin_dsh_base_llm
@@ -42,8 +46,14 @@ flowchart LR
   cfg --> plugin_dsh_base_jobs
   plugin_dsh_base_llm_retry["llm-retry<br/>@deepseek-ai/dsh-llm-retry"]
   cfg --> plugin_dsh_base_llm_retry
-  plugin_dsh_base_settings["settings<br/>@deepseek-ai/dsh-settings-file"]
+  plugin_dsh_base_config_editor["config-editor<br/>@deepseek-ai/dsh-config-editor"]
+  cfg --> plugin_dsh_base_config_editor
+  plugin_dsh_base_settings["settings<br/>@deepseek-ai/dsh-settings"]
   cfg --> plugin_dsh_base_settings
+  plugin_dsh_base_authorization["authorization<br/>@deepseek-ai/dsh-authorization"]
+  cfg --> plugin_dsh_base_authorization
+  plugin_dsh_base_deepseek_account["deepseek-account<br/>@deepseek-ai/dsh-deepseek-account-platform"]
+  cfg --> plugin_dsh_base_deepseek_account
   plugin_dsh_base_credentials["credentials<br/>@deepseek-ai/dsh-credentials-local"]
   cfg --> plugin_dsh_base_credentials
   plugin_dsh_base_llm_pi_ai["llm-pi-ai<br/>@deepseek-ai/dsh-llm-pi-ai"]
@@ -186,8 +196,10 @@ flowchart LR
 
 | Plugin id | Package / module |
 | --- | --- |
+| `tool-plugin-manager` | `@deepseek-ai/dsh-plugin-manager/tools` |
+| `plugin-manager` | `@deepseek-ai/dsh-plugin-manager` |
 | `timer` | `@deepseek-ai/cordis-plugin-timer` |
-| `hmr` | `@deepseek-ai/cordis-plugin-hmr` |
+| `hmr` | `@deepseek-ai/dsh-hmr` |
 | `llm` | `@deepseek-ai/dsh-llm` |
 | `deepseek-llm-api-extensions` | `@deepseek-ai/dsh-deepseek-llm-api-extensions` |
 | `session` | `@deepseek-ai/dsh-session` |
@@ -203,7 +215,10 @@ flowchart LR
 | `agent-default-model` | `@deepseek-ai/dsh-agent-default-model` |
 | `jobs` | `@deepseek-ai/dsh-jobs-local` |
 | `llm-retry` | `@deepseek-ai/dsh-llm-retry` |
-| `settings` | `@deepseek-ai/dsh-settings-file` |
+| `config-editor` | `@deepseek-ai/dsh-config-editor` |
+| `settings` | `@deepseek-ai/dsh-settings` |
+| `authorization` | `@deepseek-ai/dsh-authorization` |
+| `deepseek-account` | `@deepseek-ai/dsh-deepseek-account-platform` |
 | `credentials` | `@deepseek-ai/dsh-credentials-local` |
 | `llm-pi-ai` | `@deepseek-ai/dsh-llm-pi-ai` |
 | `session-persistence-jsonl` | `@deepseek-ai/dsh-session-persistence-jsonl` |

@@ -94,5 +94,9 @@ describe('keymap keydown routing', () => {
     expect(picked).toBe(false) // picked: the completion replaces native traversal
     const passed = fireEvent.keyDown(root, { key: 'Tab', keyCode: 9 })
     expect(passed).toBe(true) // pass: the browser keeps native focus traversal
+
+    // Shift+Tab is the menu's exit key, never its settle key.
+    fireEvent.keyDown(root, { key: 'Tab', keyCode: 9, shiftKey: true })
+    expect(arbitrate).toHaveBeenLastCalledWith('tabBack', false)
   })
 })

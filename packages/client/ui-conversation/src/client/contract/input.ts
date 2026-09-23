@@ -7,10 +7,10 @@
  * here is the submit plane (phase, claim, attempt) alone.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ArbitrateKey, ArbitrateOutcome, Occurrence, ReferenceInsert, TokenSpan } from './draft-editor.ts'
-import type { QueueRow } from './queue.ts'
 import type { InputSubmitMode } from './composer-submission.ts'
 
 /** Attachment payload passed to a claimed command submission. */
@@ -197,6 +197,12 @@ export interface SessionInput extends InputTarget {
    * @param text - notice body.
    */
   notify(level: 'info' | 'error', text: string): void
+
+  /**
+   * Return the keyboard to the composer with the caret it last held, for
+   * callers that took focus away from it (an overlay that held its own).
+   */
+  focus(): void
   /** Input state store (InputZone currency + decorations read here). */
   readonly state: SnapshotStore<InputState>
 }
@@ -214,6 +220,15 @@ export interface SessionInputResolver {
  * paste/…) stay InputBar-private and never ride this face.
  */
 export interface InputActions {
+  /** @returns a revision-guarded copy of the current editor selection. */
+  captureInsertion(): TokenSpan
+  /**
+   * Insert asynchronous text without replacing subsequent edits or reference chips.
+   * @param text - plain text to insert in one undo step.
+   * @param span - captured selection and draft revision.
+   * @returns false when the draft changed or submission locked the editor.
+   */
+  insertText(text: string, span: TokenSpan): boolean
   /** Replace the whole draft (persisted-draft seed and programmatic writes). */
   setDraft(text: string): void
   /** Append ordered browser-owned attachment ids; busy admission phases refuse. */
@@ -233,9 +248,6 @@ export interface InputNotice {
   readonly seq: number
 }
 
-/** One independently addressable row projected from the transient queue snapshot. */
-export type QueuedMessage = QueueRow
-
 /** Guard union of the scoped consume-token event, checked by the shell. */
 export type ConsumeTokenGuard = ConsumeTokenRequest['guard']
 
@@ -252,8 +264,8 @@ export interface InputState {
   readonly claim?: { readonly name: string; readonly token: string; readonly hint?: string; readonly attachments?: boolean }
   /** Reference occurrence view of the editor's chips, sorted by offset. */
   readonly occurrences: readonly Occurrence[]
-  /** Read-only transient inbox projection from Session control, including pending steering. */
-  readonly queue: readonly QueuedMessage[]
+  /** Messages still waiting for their own turn. */
+  readonly queue: InboxState['next-turn']
 }
 
 /**
