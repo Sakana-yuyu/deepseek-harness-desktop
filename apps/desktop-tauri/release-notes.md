@@ -1,12 +1,10 @@
-# DeepSeek Harness Desktop 0.1.7-rc.1-0.1
+# DeepSeek Harness Desktop 0.1.7-rc.1-0.2
 
 ## 中文
 
-- 同步上游发行标签 `dsh-v0.1.7-rc.1`，上游进入 rc 阶段。
-- 插件兼容性收紧：与 DSH 运行时版本不兼容的 bundle 会被拒绝安装，兼容性拒绝以类型化原因呈现；确需豁免时通过 `dsh plugin allow-version` 按精确版本批准。
-- 会话界面：工具行按准备、开始、结果三个阶段呈现，新增四种工作详情模式；图片链接悬停预览与内联展开。
-- Web 交互：只读电子表格支持触控板双轴平移与标签页手势，缩放后 PDF 页面重绘，Team 面板交互改进，模型 ID 以等宽字体显示。
-- 桌面壳无行为变化：保留独立 WebView 认证、自定义标题栏、托盘、通知与签名更新。
+- 修复升级后无法启动的问题：dsh 0.1.7 将登录令牌交换的重定向目标从 `/` 改为相对路径 `./`，桌面壳的就绪探测仍按 `/` 判定，导致启动等待超时。现同时接受两种重定向目标。
+- 包含 0.1.7-rc.1-0.1 的全部内容：同步上游发行标签 `dsh-v0.1.7-rc.1`，插件兼容性收紧、会话界面工具三阶段呈现、图片预览、电子表格触控板手势等上游改进。
+- 桌面壳其余行为不变：独立 WebView 认证、自定义标题栏、托盘、通知与签名更新。
 
 更新前请结束正在运行的任务并备份 Harness 主目录。上游进入 rc 阶段但尚未稳定；会话写入可能生成新的版本文件，旧版本无法读取新版本新增的数据。
 
@@ -14,11 +12,9 @@
 
 ## English
 
-- Sync upstream release tag `dsh-v0.1.7-rc.1`; upstream has entered the rc stage.
-- Plugin compatibility is now enforced: bundles incompatible with the DSH runtime version are refused with typed reasons; grant exact-version exemptions through `dsh plugin allow-version` when necessary.
-- Session UI: tool rows render through preparing, start, and result stages with four new work detail modes; image links preview on hover and expand inline.
-- Web interactions: read-only spreadsheets support two-axis trackpad panning and tab gestures, PDF pages redraw after zoom, the Team panel gains interaction refinements, and model IDs render in monospace.
-- No desktop-shell behavior change: the separate WebView authentication, window controls, tray, notifications, and signed updates are unchanged.
+- Fix the post-upgrade startup failure: dsh 0.1.7 changed the login token-exchange redirect target from `/` to the relative path `./`, while the desktop shell's readiness probe still expected `/`, so startup waited until timeout. Both redirect targets are now accepted.
+- Includes everything from 0.1.7-rc.1-0.1: sync of upstream release tag `dsh-v0.1.7-rc.1` with tightened plugin compatibility, three-stage tool presentation in the session UI, image previews, spreadsheet trackpad gestures, and other upstream improvements.
+- The rest of the desktop shell is unchanged: the separate WebView authentication, window controls, tray, notifications, and signed updates.
 
 Finish running tasks and back up the Harness home before upgrading. Upstream is in the rc stage but not yet stable. Session writes may create a new format generation; older releases cannot read data introduced by the new version.
 
