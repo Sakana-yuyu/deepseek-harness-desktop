@@ -628,7 +628,7 @@ async fn wait_for_http(
                     && response
                         .headers()
                         .get("location")
-                        .is_some_and(|value| value == "/")
+                        .is_some_and(|value| value.to_str().is_ok_and(is_exchange_redirect))
                     && response.headers().contains_key("set-cookie") =>
             {
                 boot_log::info(&format!(
@@ -656,6 +656,11 @@ async fn wait_for_http(
 
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
+}
+
+/// 令牌交换成功的重定向目标。dsh 0.1.7 起回答相对路径 `./`，更早版本回答 `/`。
+fn is_exchange_redirect(value: &str) -> bool {
+    value == "/" || value == "./"
 }
 
 // 只接收该子进程在预期回环端口打印的认证地址；令牌只在内存中交给 WebView。
@@ -735,6 +740,15 @@ mod tests {
             "dsh web: opening the default browser",
         ] {
             assert_eq!(super::parse_startup_url(line, base), None);
+        }
+    }
+
+    #[test]
+    fn exchange_redirect_accepts_absolute_and_relative_targets() {
+        assert!(super::is_exchange_redirect("/"));
+        assert!(super::is_exchange_redirect("./"));
+        for value in ["/?token=x", "http://127.0.0.1:17890/", "index.html", ""] {
+            assert!(!super::is_exchange_redirect(value));
         }
     }
 
