@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-工具调用在对话中显示为卡片：一个根调用树带其嵌套子调用，每个原子调用由所属视图渲染。所有生命周期状态都保留工具的普通业务图标；失败与中断仍通过冻结调用／结果状态、无障碍状态文本和失败摘要明确表达。用户可通过宿主回调打开文件或检查调用。
+工具调用在对话中显示为卡片：一个根调用树带其嵌套子调用，每个原子调用由所属视图渲染。所有生命周期状态都保留工具的普通业务图标；失败与中断仍通过冻结调用／结果状态、无障碍状态文本和失败摘要明确表达。用户可通过宿主回调打开文件或检查调用。折叠的 `web_fetch` 行把其 http(s) URL 显示为链接，在新浏览器标签页中打开。
 
 共享工具行和 Bash 行的失败、停止摘要在悬停时仍保留错误色和警告色；只有不处于这两种状态的摘要会在悬停时加深。
 
@@ -49,7 +49,7 @@ owner 载荷为 `ToolCallOwnerProps`：`callId`、`toolName`、`phase` 判别字
 
 每个注册视图都接收[工具 slot 类型](src/client/contract/slots.ts)声明的显式 `preparing`、`start` 和 `result` props。通用行在三个阶段使用同一个 `ToolRow`。行模型统一选择标题，并组合通用工具名前缀与已有参数摘要，不按生命周期阶段改变前缀；专用标题不附带英文名。准备阶段的共享参数解析入口直接返回无调用，不解析部分 JSON。write/edit 将准备态和派发后阶段拆成两个组件，只有准备态组件调用 `useToolCallArgumentsPartial`，start 与 result 共用派发后组件。Bash、Skill、Cordis 等自定义 renderer 分别处理准备态，其依赖参数的组件接收 `StartedToolCallViewProps`。
 
-本包拥有 generic fallback，以及 shell/pwsh、read、read_image、write/edit、运行中的 `str_replace_editor` `create`／`str_replace`、grep/glob、web、todo、question 与 PTC dispatch 的内置展示。结构化卡片直接从第一方原始 event 字段派生；Host `presentCall` 与 `presentResult` 值不会进入 Client。运行中与已完成的前台标准 `bash`/`pwsh` 和 `terminal_send` 调用，无论位于根还是 PTC dispatch 子调用中，都在通过相同的参数、结果和错误检查后使用 terminal 卡片。持久 `bash`/`pwsh` 调用仅在运行中使用 terminal 卡片。以已识别的 spill 策略提示结尾的 shell 输出，在 shell 行中使用可展开的 generic 输出，在 Details 中使用 generic 输出；位置被改变或被省略的退出标记无法证明成功。已完成的持久 shell 结果保持 generic 展示，因为 reset 与部分输出诊断不一定描述单个进程的退出状态；根调用的持久 shell 结果可展开，后台启动回执则保持折叠。带有 `AUTO_REVIEW_DENIED` 的原生或 PTC dispatch 失败会在折叠行显示 Auto review 裁决，展开时显示一行归一化后的“未执行”原因；原因缺失或只有空白时使用本地化 fallback 文案。成功的问题行按稳定 id 配对调用中的问题与结果中的回答，展开后显示可读的问答行。已取消或已中断的问题行显示其裁决与原始问题，不虚构回答。不受支持、格式错误或含糊的输入回退为压平的工具输入／结果文本。`ui-skill` 展示了业务包自行拥有的 `skill` 注册项。
+本包拥有 generic fallback，以及 shell/pwsh、read、read_image、write/edit、运行中的 `str_replace_editor` `create`／`str_replace`、grep/glob、web、todo、question 与 PTC dispatch 的内置展示。结构化卡片直接从第一方原始 event 字段派生；Host `presentCall` 与 `presentResult` 值不会进入 Client。运行中的原子工具行以同一道高光从左到右扫过标题、分隔符、摘要与后缀；已完成行保持静态。运行中与已完成的前台标准 `bash`/`pwsh` 和 `terminal_send` 调用，无论位于根还是 PTC dispatch 子调用中，都在通过相同的参数、结果和错误检查后使用 terminal 卡片。持久 `bash`/`pwsh` 调用仅在运行中使用 terminal 卡片。以已识别的 spill 策略提示结尾的 shell 输出，在 shell 行中使用可展开的 generic 输出，在 Details 中使用 generic 输出；位置被改变或被省略的退出标记无法证明成功。已完成的持久 shell 结果保持 generic 展示，因为 reset 与部分输出诊断不一定描述单个进程的退出状态；根调用的持久 shell 结果可展开，后台启动回执则保持折叠。带有 `AUTO_REVIEW_DENIED` 的原生或 PTC dispatch 失败会在折叠行显示 Auto review 裁决，展开时显示一行归一化后的“未执行”原因；原因缺失或只有空白时使用本地化 fallback 文案。成功的问题行按稳定 id 配对调用中的问题与结果中的回答，展开后显示可读的问答行。已取消或已中断的问题行显示其裁决与原始问题，不虚构回答。不受支持、格式错误或含糊的输入回退为压平的工具输入／结果文本。`ui-skill` 展示了业务包自行拥有的 `skill` 注册项。
 
 -----
 
@@ -120,6 +120,7 @@ terminal model 使用浏览器安全入口 `@deepseek-ai/dsh-spill-policy/notice
 
 - **Host 不把 `run_code` 暴露为 PTC mode 程序 binding**：生产事件只产生一层分发；递归的运行时/UI 约定支持嵌套。
 - **第一方工具视图集中在本包**：它们可以通过 keyed slot 独立迁移到各自所属的业务包。
+- **Web 工具链接总是打开新标签页**：折叠的 `web_fetch` URL 与展开的 web 卡片链接不遵循 `ui-chat` 的链接打开方式设置，因为工具视图没有外部链接回调。
 - **工具文案复用 `ui-conversation` locale namespace**：工具标题、行 chrome 与无 Cordis 的 primitive label 使用该字典；展示转换器模型保留 locale key 或数据，而不是已渲染文案。
 
 <a id="dev-note"></a>

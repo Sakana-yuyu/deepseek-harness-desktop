@@ -1,0 +1,14 @@
+decision classify PRECONDITION path={{target}}: The caller cannot open the requested object with both WRITE_DAC and WRITE_OWNER. The reported allow and deny ACEs are evidence, not an attribution to one rule.
+decision backup selected path={{target}}: All recovery files must be written successfully before attempting the ACL change.
+action backup started path={{target}}: Save the original DACL and an independent recovery command before changing permissions.
+action backup completed path={{target}}: Save the original DACL and an independent recovery command before changing permissions.
+action grant_dacl started path={{target}}: WRITE_OWNER is missing and WRITE_DAC is available; add a FullControl allow ACE for {{caller_sid}} while preserving deny ACEs, owner and SACL.
+action grant_dacl completed path={{target}}: WRITE_OWNER is missing and WRITE_DAC is available; add a FullControl allow ACE for {{caller_sid}} while preserving deny ACEs, owner and SACL.
+verification grant failed path={{target}}: The DACL write completed; recheck effective access before claiming that provisioning can succeed. On failure, restore this invocation and stop.
+decision rollback selected path={{target}}: The repair failed; restore every attempted DACL change from this invocation in reverse order before stopping.
+action restore_dacl started path={{target}}: Restore the requested backup DACL and inheritance protection, preserving owner and SACL.
+action restore_dacl completed path={{target}}: Restore the requested backup DACL and inheritance protection, preserving owner and SACL.
+action read_restored_dacl started path={{target}}: Read the restored DACL to compare it with the saved record.
+action read_restored_dacl completed path={{target}}: Read the restored DACL to compare it with the saved record.
+verification restore verified path={{target}}: Compare the observed DACL with the recovery record after writing it.
+summary grant failed path={{target}}: Operation completion records API execution; verification records the observed result. Only rerunning the original confined operation can confirm its failure is resolved.

@@ -100,12 +100,16 @@ The package is built on event sourcing: a `Session` is an append-only log of typ
 | [`src/surface.ts`](src/surface.ts) | Ordered surface projection, replacement validation, `deriveEventMessage` |
 | [`src/request-header.ts`](src/request-header.ts) | `request/header` folding and reconstruction |
 | [`dsh-util-values`](../../util/values/README.md) | Shared lossless JSON validation and detached snapshots |
-| [`src/repair.ts`](src/repair.ts) | Cold repair of crash-orphaned logs |
+| [`src/repair.ts`](src/repair.ts) | Shared tool-result recovery for failed steps, interrupted logs, and fork seeds |
 | [`src/invariant.ts`](src/invariant.ts) | Invariant companion: seq, turn/step enclosure, tool call/result pairing |
 
 ### Append validation
 
 Every append uses the shared iterative `snapshotJsonValue()` pass, which reads, validates, and copies each nested value once, so a stateful getter cannot supply one value to validation and another to storage. Non-lossless-JSON payloads (BigInt, cycles, sparse arrays, `-0`, exotic prototypes) are rejected at the append site, before any backend flush. The append path constructs each `SessionSeq`; surface events additionally validate marker shape, cited source-event sequences, and complete shadowed-node coverage for replacements.
+
+### Shared recovery
+
+`ToolCallRecovery` tracks unanswered requests from committed events without retaining event history. AgentLoop observes live steps; crash recovery and fork-seed construction replay their prefixes through `openTurnClosers`. Live failures and crash recovery use interrupted-result wording by default; fork construction passes the fork cause to select its distinct retry guidance. The caller appends recovery results before closing the step ([decision](../../../.agents/notes/implemented/bug-fix/2026-09-19-failed-step-tool-results.md)).
 
 ### Derived history
 
@@ -149,7 +153,7 @@ Appended surface entries are resent on later steps. A `replace` surface operatio
 
 Appended surface entries preserve reusable prefixes. A `replace` operation invalidates reuse from the first shadowed message even though the underlying event log stays append-only.
 
-### Crash-repair and fork results
+### Tool-result recovery and fork results
 
 #### What the model sees
 
@@ -157,7 +161,7 @@ If recovery finds an assistant tool request with no durable `tool/call`, its syn
 
 #### Token effect
 
-Zero tokens in an intact session. Each repaired call adds its retained risk-specific error text on resume.
+Zero tokens in an intact session. Each repaired call adds its retained risk-specific error text to later requests.
 
 #### KV Cache effect
 
@@ -167,7 +171,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 #### What the model sees
 
-The session reconstructs the tool schemas and call config that the loop actually sent; the system prompt is part of `deriveMessages()` as surface node 0 and, after an in-history update, as the latest system node. Header events add no message to history and hold no copy of the prompt.
+The session reconstructs active tool schemas and call config from request headers; provider-specific deferred and retained declarations are derived at dispatch. `toolHistory()` caches a stateful fold over committed headers and developer messages, consuming only unseen events on subsequent reads. It resolves additions through their historical `headerSeq`, returns immutable snapshots, and restarts declarations on an explicit request series or a changed retained definition. Restoring a retained name with an unchanged definition continues the series; the recorded addition re-offers it. Both loop requests and compaction calls use this state. Headers lacking matching update records use complete active declarations. Same-name schema changes are allowed and invalidate prefix reuse even on `in-history` routes; registration-time rejection against historical tools is deferred ([rationale](../../../.agents/notes/implemented/architecture/2026-09-20-dynamic-tool-updates.md)). The system prompt remains part of `deriveMessages()`; header events add no message or prompt copy.
 
 #### Token effect
 

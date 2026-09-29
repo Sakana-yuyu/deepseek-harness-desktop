@@ -74,7 +74,6 @@ describe('declarative preset revisions', () => {
     await expect(ctx.agentPresets.mount(scope.ctx, 'broken')).rejects.toThrow()
     expect(await ctx.agentPresets.mount(scope.ctx)).toEqual({ id: 'standard' })
     const roster = await ctx.agentPresets.remoteExportList()
-    expect(roster.modeSelectionEnabled).toBe(true)
     expect(roster.presets.find(row => row.id === 'standard')?.isDefault).toBe(true)
   })
 
@@ -217,18 +216,28 @@ it('allows an isolated service and resolves it through the Agent composition', a
   expect(ctx.agentPresets.serviceFor({ ctx: scope.ctx }, 'loader')).toBeUndefined()
 })
 
-it('keeps policy preferences while hiding and restoring the chooser', async () => {
+it('resolves the saved default over the deployment default, and drops a removed override', async () => {
   const ctx = await harness({ live: true })
   contexts.push(ctx)
   const live = liveRegistries.get(ctx)!
-  await live.update({ selectedDefault: 'minimal', modeSelectionEnabled: true })
-  expect(ctx.agentPresets.defaultId).toBe('minimal')
-  await live.update({ modeSelectionEnabled: false })
-  expect(ctx.agentPresets.defaultId).toBe('standard')
-  await live.update({ modeSelectionEnabled: true })
+  await live.update({ selectedDefault: 'minimal' })
   expect(ctx.agentPresets.defaultId).toBe('minimal')
   await live.replace({ default: 'standard' })
   expect(ctx.agentPresets.defaultId).toBe('standard')
+})
+
+it('ignores a retired modeSelectionEnabled field in the user patch', async () => {
+  const ctx = await harness({ live: true })
+  contexts.push(ctx)
+  const live = liveRegistries.get(ctx)!
+  await declare(ctx, contribution('minimal'))
+  // A patch written before Developer tools became the only gate still carries
+  // this key; the Loader's declared fields simply do not include it.
+  await live.update({ selectedDefault: 'minimal', modeSelectionEnabled: false })
+  expect(ctx.agentPresets.defaultId).toBe('minimal')
+  expect((await ctx.agentPresets.remoteExportList()).presets.find(row => row.id === 'minimal')?.isDefault).toBe(true)
+  // Neither read nor rewritten: the raw entry keeps the key it was loaded with.
+  expect(live.entry.options.config).toMatchObject({ selectedDefault: 'minimal', modeSelectionEnabled: false })
 })
 
 it('keeps its own instance off the generated Settings pages', () => omitsGeneratedPage(async (ctx) => {

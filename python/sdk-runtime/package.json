@@ -63,6 +63,8 @@
     "@deepseek-ai/dsh-launch-environment": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-llm-deepseek": "workspace:*",
+    "@deepseek-ai/dsh-llm-deepseek-api-key": "workspace:*",
+    "@deepseek-ai/dsh-llm-deepseek-account": "workspace:*",
     "@deepseek-ai/dsh-llm-pi-ai": "workspace:*",
     "@deepseek-ai/dsh-llm-retry": "workspace:*",
     "@deepseek-ai/dsh-mcp-client": "workspace:*",
@@ -150,6 +152,7 @@
     "@deepseek-ai/dsh-web-search-perplexity": "workspace:*",
     "@deepseek-ai/dsh-workflow": "workspace:*",
     "@deepseek-ai/dsh-workflow-ptc": "workspace:*",
+    "@deepseek-ai/dsh-otel": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~"
   }
 }

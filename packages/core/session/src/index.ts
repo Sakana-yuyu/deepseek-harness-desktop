@@ -19,6 +19,8 @@ import type { CreateSessionOptions, EpochHeader, PrepareSessionOptions, RequestC
 import { SurfaceManager, validateSessionEventData, validateSurfaceMetadata } from './surface.ts'
 import type { SessionSurface, SessionMessageProjection } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
+import { ToolHistoryProjection } from './tool-history.ts'
+import type { ToolHistory } from '@deepseek-ai/dsh-llm'
 
 import { buildForkSeed } from './fork.ts'
 
@@ -27,7 +29,7 @@ export * from './types.ts'
 export { SessionPreparation } from './preparation.ts'
 export type { SessionPreparationOptions } from './preparation.ts'
 export type { AssistantMessage, DeveloperMessage, SystemMessage, ToolResultMessage, UserMessage } from '@deepseek-ai/dsh-llm'
-export { interruptedTurnClosers, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN } from './repair.ts'
+export { interruptedTurnClosers, ToolCallRecovery, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN } from './repair.ts'
 export type { SessionSurface, SurfaceFoldReplacement, SurfaceFoldResult, SessionMessageProjection, SessionMessageProjectionContext } from './surface.ts'
 export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.ts'
 export { canonicalHeader, foldRequestHeader, headerEquals } from './request-header.ts'
@@ -812,6 +814,22 @@ export class Session {
       this.contextFoldSeq = this.log.length
     }
     return this.contextFold
+  }
+
+  /** Cached historical tool definitions and updates for request projection. */
+  private readonly toolHistoryProjection = new ToolHistoryProjection()
+  /** Index of the next committed event not yet consumed by the tool-history fold. */
+  private toolHistorySeq = 0
+
+  /**
+   * Fold unseen committed events into capability-independent tool history.
+   * Initial access reconstructs inherited history; later reads consume only new events.
+   * @returns an immutable snapshot for LLM request projection, including historical addition definitions.
+   */
+  toolHistory(): ToolHistory {
+    for (const event of this.log.slice(this.toolHistorySeq)) this.toolHistoryProjection.apply(event)
+    this.toolHistorySeq = this.log.length
+    return this.toolHistoryProjection.snapshot()
   }
 
   /** The derived-message cache: frozen projections, extended per unseen node. */

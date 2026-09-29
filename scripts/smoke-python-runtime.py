@@ -36,6 +36,8 @@ WORKFLOW_PROMPT = "Use workflow to compute the packaged worker smoke value witho
 WORKFLOW_WORKER_TEXT = "workflow worker smoke ok"
 MINIMAL_PROMPT = "Exercise the packaged minimal agent's persistent shell."
 MINIMAL_TEXT = "minimal agent smoke ok"
+DYNAMIC_TOOLS_PROMPT = "Read dynamic-tool-task.txt, call the newly available snapshot_ping tool once, then reply DYNAMIC_TOOLS_OK."
+DYNAMIC_TOOLS_TEXT = "DYNAMIC_TOOLS_OK"
 FS_SEARCH_PROMPT = "Exercise the packaged filesystem search tools."
 FS_SEARCH_TEXT = "filesystem search smoke ok"
 FS_SEARCH_MARKER = "PACKAGED_FS_SEARCH_OK"
@@ -103,6 +105,11 @@ RESTART_SECOND_PROMPT = "Complete the second isolated Python SDK process turn."
 RESTART_SECOND_TEXT = "PROCESS_TWO_OK"
 RESTART_FIRST_SESSION_ID = "process-one"
 RESTART_SECOND_SESSION_ID = "process-two"
+RECOVERY_PROMPT = "Run three todo updates; the scheduler will reject the second call."
+RECOVERY_CONTINUE_PROMPT = "Continue after the scheduler failure without repeating any tools."
+RECOVERY_TEXT = "SCHEDULER_RECOVERY_OK"
+RECOVERY_SESSION_ID = "scheduler-recovery"
+RECOVERY_CALL_IDS = ("scheduler-complete", "scheduler-fail", "scheduler-unstarted")
 SNAPSHOT_WORKFLOW_SCRIPT = (
     "phase('Delegate')\n"
     f"const reply = await agent('{SNAPSHOT_WORKFLOW_CHILD_PROMPT}', {{ label: 'workflow-child' }})\n"
@@ -124,12 +131,20 @@ IN_HISTORY_SNAPSHOT_DIRECTORY = (
     Path(__file__).resolve().parent / "snapshots" / "python-sdk-single-exe" / "minimal-in-history"
 )
 IN_HISTORY_SNAPSHOT_FILENAMES = ("prompt-history.json",)
+DYNAMIC_TOOLS_SNAPSHOT_DIRECTORY = (
+    Path(__file__).resolve().parent / "snapshots" / "python-sdk-single-exe" / "dynamic-tools"
+)
+DYNAMIC_TOOLS_SNAPSHOT_FILENAMES = ("tool-history.json",)
 RESTART_SNAPSHOT_DIRECTORY = (
     Path(__file__).resolve().parent / "snapshots" / "python-sdk-single-exe" / "restart"
 )
 RESTART_SNAPSHOT_FILENAMES = (
     "result.json", "requests.json", "session.1.v3.jsonl", "session.2.v3.jsonl",
 )
+RECOVERY_SNAPSHOT_DIRECTORY = (
+    Path(__file__).resolve().parent / "snapshots" / "python-sdk-single-exe" / "scheduler-recovery"
+)
+RECOVERY_SNAPSHOT_FILENAMES = ("result.json", "requests.json", "session.v4.jsonl")
 MCP_SERVER_SCRIPT = """\
 import json
 import os
@@ -310,6 +325,32 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
     if not isinstance(latest, dict):
         raise AssertionError(f"model request has an invalid latest message: {body}")
 
+    recovery_prompt = next((
+        block.get("text")
+        for block in latest.get("content", [])
+        if isinstance(block, dict) and block.get("type") == "text"
+        and block.get("text") in {RECOVERY_PROMPT, RECOVERY_CONTINUE_PROMPT}
+    ), None)
+    if recovery_prompt == RECOVERY_PROMPT:
+        assert_advertised_tool(body, "todo_write")
+        chunks = [message_start()]
+        for index, call_id in enumerate(RECOVERY_CALL_IDS):
+            call = tool_call_chunks(call_id, "todo_write", {"todos": []})
+            chunks.extend({**chunk, "index": index} for chunk in call[1:-2])
+        chunks.extend(call[-2:])
+        return chunks
+    if recovery_prompt == RECOVERY_CONTINUE_PROMPT:
+        results = [
+            block for message in messages
+            for block in message.get("content", [])
+            if isinstance(block, dict) and block.get("type") == "tool_result"
+        ]
+        if [result.get("tool_use_id") for result in results] != list(RECOVERY_CALL_IDS):
+            raise AssertionError(f"recovered history lost tool-result pairing: {results}")
+        if [result.get("is_error", False) for result in results] != [False, True, True]:
+            raise AssertionError(f"recovered history changed completed or pending outcomes: {results}")
+        return text_chunks(RECOVERY_TEXT)
+
     tool_results = [
         block for block in latest.get("content", [])
         if isinstance(block, dict) and block.get("type") == "tool_result"
@@ -334,6 +375,17 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
         minimal = minimal_tool_followup(call_id, tool_name, tool_text)
         if minimal is not None:
             return minimal
+        if call_id == "python-dynamic-read" and tool_name == "read":
+            if "Call snapshot_ping once." not in tool_text or result.get("is_error"):
+                raise AssertionError(f"dynamic tool scenario could not read its task: {tool_text}")
+            assert_advertised_tool(body, "snapshot_ping")
+            return tool_call_chunks("python-dynamic-ping", "snapshot_ping", {})
+        if call_id == "python-dynamic-ping" and tool_name == "snapshot_ping":
+            if tool_text != "pong" or result.get("is_error"):
+                raise AssertionError(f"dynamically added tool did not execute: {tool_text}")
+            if "snapshot_ping" in advertised_tool_names(body):
+                raise AssertionError("addition-only request retained the removed tool")
+            return text_chunks(DYNAMIC_TOOLS_TEXT)
         advanced = advanced_tool_followup(body, call_id, tool_name, tool_text)
         if advanced is not None:
             return advanced
@@ -374,6 +426,7 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
         RESTART_SECOND_PROMPT,
         PROFILE_PLUGIN_PROMPT,
         AUTHORING_PROMPT,
+        DYNAMIC_TOOLS_PROMPT,
     }
     prompt = next(
         (candidate for candidate in user_prompts if candidate in scenario_prompts),
@@ -396,6 +449,11 @@ def completion_chunks(body: dict[str, object]) -> list[dict[str, object]]:
         )
     if prompt == RESTART_FIRST_PROMPT:
         return text_chunks(RESTART_FIRST_TEXT)
+    if prompt == DYNAMIC_TOOLS_PROMPT:
+        assert_advertised_tool(body, "read")
+        if "snapshot_ping" in advertised_tool_names(body):
+            raise AssertionError("dynamic tool was registered before its enabling read")
+        return tool_call_chunks("python-dynamic-read", "read", {"file_path": "dynamic-tool-task.txt"})
     if prompt == RESTART_SECOND_PROMPT:
         if any(
             isinstance(message, dict)
@@ -720,7 +778,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--scenario",
-        choices=("all", "sdk-default", "sdk-custom", "sdk-minimal", "sdk-minimal-in-history", "sdk-fs-search", "sdk-spawn-node", "sdk-mcp", "sdk-snapshot", "sdk-restart", "sdk-profile-plugin", "sdk-office", "sdk-authoring", "sdk-live", "runner", "direct"),
+        choices=("all", "sdk-default", "sdk-custom", "sdk-minimal", "sdk-minimal-in-history", "sdk-dynamic-tools", "sdk-fs-search", "sdk-spawn-node", "sdk-mcp", "sdk-snapshot", "sdk-recovery", "sdk-restart", "sdk-profile-plugin", "sdk-office", "sdk-authoring", "sdk-live", "runner", "direct"),
         default="all",
     )
     parser.add_argument("--exe", type=Path)
@@ -739,10 +797,10 @@ def main() -> None:
         parser.error("--scenario sdk-profile-plugin requires --installed-wheel")
     if args.installed_wheel:
         args.exe = assert_installed_wheel_environment()
-    if args.scenario in {"all", "sdk-custom", "sdk-minimal", "sdk-minimal-in-history", "sdk-fs-search", "sdk-spawn-node", "sdk-snapshot", "sdk-restart", "sdk-office", "sdk-authoring", "runner", "direct"} and args.exe is None:
-        parser.error("--exe is required for custom, minimal, fs-search, spawn-node, snapshot, restart, office, runner, and direct scenarios")
-    if args.update_snapshots and args.scenario not in {"all", "sdk-minimal", "sdk-minimal-in-history", "sdk-snapshot", "sdk-restart", "sdk-authoring"}:
-        parser.error("--update-snapshots requires --scenario sdk-minimal, sdk-minimal-in-history, sdk-snapshot, sdk-restart, sdk-authoring, or all")
+    if args.scenario in {"all", "sdk-custom", "sdk-minimal", "sdk-minimal-in-history", "sdk-dynamic-tools", "sdk-fs-search", "sdk-spawn-node", "sdk-snapshot", "sdk-recovery", "sdk-restart", "sdk-office", "sdk-authoring", "runner", "direct"} and args.exe is None:
+        parser.error("--exe is required for custom, minimal, dynamic-tools, fs-search, spawn-node, snapshot, recovery, restart, office, runner, and direct scenarios")
+    if args.update_snapshots and args.scenario not in {"all", "sdk-minimal", "sdk-minimal-in-history", "sdk-dynamic-tools", "sdk-snapshot", "sdk-recovery", "sdk-restart", "sdk-authoring"}:
+        parser.error("--update-snapshots requires --scenario sdk-minimal, sdk-minimal-in-history, sdk-dynamic-tools, sdk-snapshot, sdk-recovery, sdk-restart, sdk-authoring, or all")
     if args.exe is not None and not args.exe.is_file():
         parser.error(f"runtime executable does not exist: {args.exe}")
 
@@ -780,6 +838,9 @@ def main() -> None:
         if args.scenario in {"all", "sdk-minimal-in-history"}:
             assert args.exe is not None
             smoke_sdk_minimal(model.url, args.exe.resolve(), args.update_snapshots, in_history=True)
+        if args.scenario in {"all", "sdk-dynamic-tools"}:
+            assert args.exe is not None
+            smoke_sdk_dynamic_tools(model.url, args.exe.resolve(), args.update_snapshots)
         if args.scenario in {"all", "sdk-fs-search"}:
             assert args.exe is not None
             smoke_sdk_fs_search(model.url, args.exe.resolve())
@@ -791,6 +852,9 @@ def main() -> None:
         if args.scenario in {"all", "sdk-snapshot"}:
             assert args.exe is not None
             smoke_sdk_snapshot(model.url, args.exe.resolve(), args.update_snapshots)
+        if args.scenario in {"all", "sdk-snapshot", "sdk-recovery"}:
+            assert args.exe is not None
+            smoke_sdk_scheduler_recovery(model.url, args.exe.resolve(), args.update_snapshots)
         if args.scenario in {"all", "sdk-restart"}:
             assert args.exe is not None
             smoke_sdk_restart_snapshot(model.url, args.exe.resolve(), args.update_snapshots)
@@ -1221,6 +1285,48 @@ def smoke_sdk_minimal(
             )
 
 
+def smoke_sdk_dynamic_tools(base_url: str, executable: Path, update_snapshots: bool) -> None:
+    """Observe native tool changes through the shipped SDK profile and its durable log."""
+    from deepseek_harness import DeepSeekHarness
+
+    first_request = len(MockModelHandler.requests)
+    with tempfile.TemporaryDirectory(prefix="dsh-sdk-dynamic-tools-") as temporary:
+        root = Path(temporary).resolve()
+        dsh_home = root / "home"
+        sessions = dsh_home / "sessions"
+        task = root / "dynamic-tool-task.txt"
+        task.write_text("Call snapshot_ping once.\n", encoding="utf-8")
+        patch = write_profile_patch(root, "dynamic-tools.patch.yml", sessions, [
+            {"id": "llm-deepseek", "config": {"models": [
+                {"id": "smoke-model", "toolUpdate": "addition-only"},
+            ]}},
+            {"id": "tool-bash", "disabled": True},
+            {"id": "tool-pwsh", "disabled": True},
+            {"id": "session-title-llm", "disabled": True},
+            {"insert": [{
+                "id": "dynamic-tools",
+                "name": (Path(__file__).resolve().parent / "fixtures/python-sdk-dynamic-tools.mjs").as_uri(),
+            }]},
+        ])
+        with DeepSeekHarness(
+            provider="deepseek-official", model="smoke-model", cwd=str(root),
+            dsh_bin=str(executable), dsh_home=str(dsh_home), patches=(str(patch),),
+            env={"DSH_PERMISSION_MODE": "danger-full-access", "DSH_TELEMETRY_DISABLED": "1"},
+            api_key="sk-keyless-smoke", base_url=base_url, request_timeout_seconds=60,
+        ) as harness:
+            result = harness.run(DYNAMIC_TOOLS_PROMPT, session_id="dynamic-tools-smoke")
+        assert result.final_response == DYNAMIC_TOOLS_TEXT, result.final_response
+        assert task.read_text(encoding="utf-8") == "Call snapshot_ping once.\n"
+        logs = read_session_logs(sessions)
+        assert set(logs) == {result.session_id}, sorted(logs)
+        files = build_dynamic_tools_snapshot_files(
+            result, MockModelHandler.requests[first_request:], logs[result.session_id], root,
+        )
+        compare_snapshot_files(
+            files, update_snapshots, DYNAMIC_TOOLS_SNAPSHOT_DIRECTORY, DYNAMIC_TOOLS_SNAPSHOT_FILENAMES,
+        )
+
+
 def smoke_sdk_fs_search(base_url: str, executable: Path) -> None:
     """Exercise real grep and glob spawns through the packaged executable."""
     from deepseek_harness import DeepSeekHarness
@@ -1570,6 +1676,94 @@ def smoke_sdk_restart_snapshot(base_url: str, executable: Path, update_snapshots
         compare_snapshot_files(
             files, update_snapshots, RESTART_SNAPSHOT_DIRECTORY, RESTART_SNAPSHOT_FILENAMES,
             native_writer_output=True,
+        )
+
+
+def smoke_sdk_scheduler_recovery(base_url: str, executable: Path, update_snapshots: bool) -> None:
+    """Keep a failed tool turn usable through the real Messages serializer and SDK."""
+    from deepseek_harness import DeepSeekHarness
+
+    first_request = len(MockModelHandler.requests)
+    with tempfile.TemporaryDirectory(prefix="dsh-sdk-scheduler-recovery-") as temporary:
+        root = Path(temporary).resolve()
+        dsh_home = root / "home"
+        sessions = dsh_home / "sessions"
+        base_patch = write_advanced_profile_patch(root, "base.patch.yml", sessions)
+        patch = write_profile_patch(root, "recovery.patch.yml", sessions, [
+            {"id": "tool-todo", "disabled": False},
+            {"id": "session-title-llm", "disabled": True},
+            {"id": "session-log-deepseek", "config": {"enabled": False}},
+            {"insert": [{
+                "id": "scheduler-failure-fixture",
+                "name": (
+                    Path(__file__).resolve().parent.parent
+                    / "snapshots/sdk/tool-scheduler-recovery/scheduler-failure.mjs"
+                ).as_uri(),
+            }]},
+        ])
+
+        def connect() -> DeepSeekHarness:
+            return DeepSeekHarness(
+                provider="deepseek-official", model="smoke-model", cwd=str(root),
+                dsh_bin=str(executable), dsh_home=str(dsh_home),
+                patches=(str(base_patch), str(patch)),
+                env={"DSH_PERMISSION_MODE": "danger-full-access", "DSH_TELEMETRY_DISABLED": "1"},
+                api_key="sk-keyless-smoke", base_url=base_url, request_timeout_seconds=60,
+            )
+
+        with connect() as harness:
+            failed = harness.run(RECOVERY_PROMPT, session_id=RECOVERY_SESSION_ID)
+            continued = harness.run(RECOVERY_CONTINUE_PROMPT, session_id=RECOVERY_SESSION_ID)
+        results = [failed, continued]
+        if [result.finish_reason for result in results] != ["error", "completed"]:
+            outcomes = [
+                event["data"]["reason"] for result in results
+                for event in result.events if event.get("type") == "turn/end"
+            ]
+            raise AssertionError(f"scheduler recovery did not preserve turn outcomes: {outcomes}")
+        if continued.final_response != RECOVERY_TEXT:
+            raise AssertionError("scheduler recovery lost the continued response")
+        requests = MockModelHandler.requests[first_request:]
+        if len(requests) != 2:
+            raise AssertionError(f"scheduler recovery expected two serialized model requests: {requests}")
+        logs = read_session_logs(sessions)
+        records = logs[RECOVERY_SESSION_ID]
+        calls = [record["data"]["callId"] for record in records if record.get("type") == "tool/call"]
+        if calls != list(RECOVERY_CALL_IDS[:2]):
+            raise AssertionError(f"scheduler recovery dispatched the unstarted call: {calls}")
+        tool_results = [
+            record["data"]["message"]
+            for record in records if record.get("type") == "tool/result"
+        ]
+        if [(message.get("role"), message.get("toolCallId"), message.get("isError", False)) for message in tool_results] != [
+            ("tool", RECOVERY_CALL_IDS[0], False), ("tool", RECOVERY_CALL_IDS[1], True), ("tool", RECOVERY_CALL_IDS[2], True),
+        ]:
+            raise AssertionError(f"scheduler recovery duplicated or lost tool outcomes: {tool_results}")
+        if sum(record.get("type") == "todo/write" for record in records) != 1:
+            raise AssertionError("scheduler recovery executed an unstarted todo update")
+        replacements = [(str(root), "{{cwd}}"), (RECOVERY_SESSION_ID, "{{parent}}")]
+        result_value = [{
+            "session_id": result.session_id,
+            "final_response": result.final_response,
+            "finish_reason": result.finish_reason,
+            "eventTypes": [event.get("type") for event in result.events],
+            "notificationMethods": [notification.method for notification in result.notifications],
+        } for result in results]
+        request_value = [{
+            "model": request.get("model"),
+            "messages": restart_request_messages(request),
+        } for request in requests]
+        normalized_records = project_session_snapshot([
+            normalize_snapshot_value(record, replacements) for record in records
+        ])
+        content = render_jsonl(normalized_records)
+        files = {
+            "result.json": json.dumps(normalize_snapshot_value(result_value, replacements), indent=2) + "\n",
+            "requests.json": json.dumps(normalize_snapshot_value(request_value, replacements), indent=2) + "\n",
+            snapshot_session_filename(0, session_header_version(content, "scheduler recovery")): content,
+        }
+        compare_snapshot_files(
+            files, update_snapshots, RECOVERY_SNAPSHOT_DIRECTORY, RECOVERY_SNAPSHOT_FILENAMES,
         )
 
 
@@ -2018,6 +2212,62 @@ def build_in_history_snapshot_files(
     return {"prompt-history.json": json.dumps(evidence, indent=2, ensure_ascii=False) + "\n"}
 
 
+def build_dynamic_tools_snapshot_files(
+    result: "RunResult",
+    requests: list[dict[str, object]],
+    log: list[dict[str, object]],
+    cwd: Path,
+) -> dict[str, str]:
+    """Pin tool declarations, historical schema references, and Python SDK event delivery."""
+    selected_types = {"request/header", "request/context", "developer/message", "tool/call", "tool/result"}
+    events = [event for event in result.events if event.get("type") in selected_types]
+    subscribed = [notification.payload["event"] for notification in result.notifications
+                  if notification.method == "session.event"
+                  and notification.payload.get("event", {}).get("type") in selected_types]
+    assert subscribed == events, "SDK notifications differ from RunResult.events"
+    assert [event for event in log if event.get("type") in selected_types] == events, "SDK events differ from persistence"
+    headers = [event for event in events if event["type"] == "request/header"]
+    assert len(headers) == 3, headers
+    names = [[tool["name"] for tool in event["data"]["header"]["tools"]] for event in headers]
+    assert ["snapshot_ping" in tools for tools in names] == [False, True, False], names
+    assert names[1] == sorted([*names[0], "snapshot_ping"]), names
+    assert names[2] == names[0], names
+    updates = [event for event in events if event["type"] == "developer/message"]
+    assert len(updates) == 2, updates
+    assert [event["data"]["message"]["content"] for event in updates] == [
+        [{"type": "tool-addition", "toolName": "snapshot_ping"}],
+        [{"type": "tool-removal", "toolName": "snapshot_ping"}],
+    ], updates
+    assert updates[0]["data"]["headerSeq"] == headers[1]["seq"], updates
+    assert "headerSeq" not in updates[1]["data"], updates[1]
+    assert all(event.get("surfaceOp") == "append" for event in updates), updates
+    calls = [event["data"]["name"] for event in events if event["type"] == "tool/call"]
+    assert calls == ["read", "snapshot_ping"], calls
+    ping = next(event["data"]["message"] for event in events
+                if event["type"] == "tool/result" and event["data"]["message"]["toolCallId"] == "python-dynamic-ping")
+    assert ping["isError"] is False and ping["content"] == [{"type": "text", "text": "pong"}], ping
+    assert len(requests) == 3, requests
+    assert all(request["system"] == requests[0]["system"] for request in requests), "tool changes altered the prompt"
+    declarations = [next((tool for tool in request["tools"] if tool["name"] == "snapshot_ping"), None)
+                    for request in requests]
+    assert declarations[0] is None and declarations[2] is None, declarations
+    assert declarations[1]["defer_loading"] is True, declarations[1]
+    changes = [[block for message in request["messages"] for block in message["content"]
+                if block.get("type") in ("tool_addition", "tool_removal")] for request in requests]
+    assert changes == [[], [{"type": "tool_addition", "tool": {"type": "tool_reference", "name": "snapshot_ping"}}], []], changes
+    assert requests[1]["messages"][:len(requests[0]["messages"])] == requests[0]["messages"], "tool addition changed earlier messages"
+    replacements = [(str(cwd), "{{cwd}}"), (result.session_id, "{{session}}")]
+    evidence = {
+        "finalResponse": result.final_response,
+        "declarations": declarations,
+        "requestToolChanges": changes,
+        "events": [event for event in events if event["type"] in {"request/header", "request/context", "developer/message"}],
+        "toolCalls": calls,
+        "pingResult": ping,
+    }
+    return {"tool-history.json": json.dumps(normalize_snapshot_value(evidence, replacements), indent=2, ensure_ascii=False) + "\n"}
+
+
 def build_minimal_snapshot_files(
     requests: list[dict[str, object]],
     cwd: Path,
@@ -2309,7 +2559,19 @@ def normalize_snapshot_value(
                 if isinstance(dt, list):
                     member["dt"] = [0] * len(dt)
     if isinstance(normalized.get("id"), str) and normalized.get("role") in ("assistant", "system", "user", "tool", "developer"):
-        if not normalized["id"].startswith("{{message:"):
+        # Replay fixtures retain deterministic repair ids with the call id and original event sequence.
+        source = normalized.get("source")
+        call_id = normalized.get("toolCallId") if normalized.get("role") == "tool" else (
+            source.get("callId") if isinstance(source, dict) and source.get("kind") == "tool" else None
+        )
+        repair_prefix = (
+            f"interrupted-tool-result-{call_id}-" if isinstance(call_id, str) else None
+        )
+        repair_id = (
+            repair_prefix is not None and normalized["id"].startswith(repair_prefix)
+            and normalized["id"][len(repair_prefix):].isdigit()
+        )
+        if not normalized["id"].startswith("{{message:") and not repair_id:
             normalized["id"] = "{{messageId}}"
     if normalized.get("type") in ("feedback/message-put", "feedback/message-delete"):
         data = normalized.get("data")

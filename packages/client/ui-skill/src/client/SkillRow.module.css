@@ -18,27 +18,6 @@
   cursor: pointer;
 }
 
-.card[data-state='running'] .row::after,
-.card[data-state='preparing'] .row::after {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 300px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,
-    transparent 100%
-  );
-  animation: dsh-skill-row-sweep 2.6s ease-out infinite;
-  pointer-events: none;
-}
-
-@keyframes dsh-skill-row-sweep {
-  0% { left: -300px; }
-  90%, 100% { left: 100%; }
-}
-
 .leading {
   position: relative;
   flex: none;
@@ -129,7 +108,7 @@
   margin: 4px 0 4px 4px;
   overflow: hidden;
   border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-markdown-code-block);
 }
 
@@ -164,7 +143,7 @@
 .instructions::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 .instructions::-webkit-scrollbar-track {
@@ -210,11 +189,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card[data-state='running'] .row::after {
-    animation: none;
-    display: none;
-  }
-
   .iconIdle,
   .chevronHover,
   .inspectButton {

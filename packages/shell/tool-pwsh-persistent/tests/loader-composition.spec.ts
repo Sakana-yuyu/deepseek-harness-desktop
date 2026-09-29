@@ -100,6 +100,12 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
       // send's wait reason, which pins the controlled-prompt fast path directly
       // instead of relying on how long silence would take to settle.
       '    handoffGraceMs: 300',
+      // The self-hosted Windows pool stalls the console renderer for seconds (issue 2487): the
+      // OSC marker reaches the session while the five-byte prompt tail that follows it does not
+      // arrive until the plain silence bound has passed, and every such send would otherwise
+      // settle as inferred_idle. The tolerance keeps those sends on the controlled-prompt path
+      // this case pins, without letting a missing prompt (no marker at all) escape the silence tier.
+      '    promptTailGraceMs: 5000',
       '    scrollbackLines: 20000',
       // The first call pays the full pwsh cold-start latency (spawn + .NET +
       // PSReadLine + Defender) inside the tool deadline; a 60s bound on the
@@ -198,8 +204,11 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     expect(text(await execute('after-exit', 'Write-Output "$PWD"'))).toBe(root)
 
     // Six commands settle on the controlled prompt; no send may fall back to the
-    // silence tier, which is the 3.5 s-per-call degradation this suite pins.
-    expect(settleReasons.filter(reason => reason === 'stdin_read').length).toBeGreaterThanOrEqual(6)
+    // silence tier, which is the 3.5 s-per-call degradation this suite pins. The
+    // counts alone do not say which tier settled which send, so every reason the
+    // run recorded rides in the failure message (2026-09-25 self-hosted Windows
+    // lane reported one to two stdin_read settlements across three runs).
+    expect(settleReasons.filter(reason => reason === 'stdin_read').length, JSON.stringify(settleReasons)).toBeGreaterThanOrEqual(6)
     expect(settleReasons).not.toContain('inferred_idle')
   }, 120_000)
 })

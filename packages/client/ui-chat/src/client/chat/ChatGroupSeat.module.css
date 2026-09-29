@@ -68,11 +68,11 @@
 }
 
 .title[aria-expanded="true"] {
-  padding-bottom: 16px;
+  padding-bottom: 8px;
 }
 
 .body {
-  --dsh-chat-flow-gap: 8px;
+  --dsh-chat-flow-gap: 6px;
   max-height: min(400px, 50vh);
   overflow-y: auto;
   overscroll-behavior-y: auto;
@@ -118,10 +118,9 @@
 }
 .content > * { flex-shrink: 0; }
 .content > :not([hidden]):not(:empty) ~ :not([hidden]):not(:empty) {
-  margin-top: var(--dsh-chat-flow-gap, 8px);
+  margin-top: var(--dsh-chat-flow-gap, 6px);
 }
 .expandedBody {
-  --dsh-chat-flow-gap: 16px;
   max-height: none;
   overflow: visible;
   scrollbar-gutter: auto;

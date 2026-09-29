@@ -144,6 +144,8 @@ export function createElectronBuilderConfig(
     extraResources: [
       { from: buildPaths.runtime, to: 'runtime' },
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
+      // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.
+      ...(packagesWindows ? [{ from: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)), to: 'tray.ico' }] : []),
     ],
     mac: {
       icon: fileURLToPath(new URL('../resources/icon-macos.png', import.meta.url)),
@@ -154,6 +156,8 @@ export function createElectronBuilderConfig(
       forceCodeSigning: true,
       hardenedRuntime: true,
       extendInfo: { NSMicrophoneUsageDescription: 'DeepSeek Harness uses your microphone to transcribe speech into message drafts.' },
+      entitlements: fileURLToPath(new URL('./macos-entitlements.plist', import.meta.url)),
+      entitlementsInherit: fileURLToPath(new URL('./macos-entitlements.plist', import.meta.url)),
       // ASAR-unpacked native runtime files are pre-signed; PAK resources are sealed by their enclosing bundle.
       signIgnore: ['/Contents/Resources/app\\.asar\\.unpacked/dsh(?:/|$)', '/Contents/Resources/runtime/primary-runtime(?:/|$)', '\\.pak$'],
       notarize: true,

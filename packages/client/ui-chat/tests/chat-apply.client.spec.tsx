@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, fireEvent, render } from '@testing-library/react'
 import {
   SlotTestRuntime, stubConfigForm, usePinnedBrowserLanguages,
@@ -23,6 +23,7 @@ import {
 import type {
   ChatNodeInjected, ChatSnapshot, TranscriptViewRowInjected, UseChatNodeTurnData, UseDisclosure,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { QuotaNoticeInjected } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { PerformanceUsageRowInjected } from '../src/client/settings/PerformanceUsageRow.tsx'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
 
@@ -69,6 +70,7 @@ async function bench() {
   runtime.slots.installLocale(locale)
   await runtime.root.declare({
     'main': { kind: 'keyed', scope: 'root' },
+    'shell.overlay': { kind: 'list', scope: 'root' },
     'conversation.approval.detail': { kind: 'single', scope: 'session' },
     'settings.general.item': { kind: 'list', scope: 'root' },
   }, (_props: { renderSlot?: unknown }) => null)
@@ -94,6 +96,29 @@ describe('Chat apply wiring', () => {
     expect(entry).not.toHaveProperty('presentationPolicyFor')
   })
 
+  it('registers the frame-wide quota notice host and keeps the failure row injection-free', async () => {
+    const b = await bench()
+    try {
+      const host = b.runtime.slots.entries('shell.overlay').find(entry => entry.options.id === 'chat.quota-notice')
+      expect(host).toBeDefined()
+      expect(b.runtime.slots.spec('shell.quota-notice')).toMatchObject({ kind: 'chain', scope: 'root' })
+      const inject: ((...args: never[]) => Record<string, unknown>) | undefined = host?.inject
+      if (inject === undefined) throw new Error('ui-chat did not register the quota notice host')
+      const face = inject()
+      expect(face.hooks).toBeDefined()
+      const notice = (face.hooks as QuotaNoticeInjected['hooks']).notice
+      expect(notice.getSnapshot()).toBeNull()
+      ;(face.dismissNotice as QuotaNoticeInjected['dismissNotice'])()
+      expect(notice.getSnapshot()).toBeNull()
+      // The turn-error row carries neither a transient notice nor a chain child.
+      const row = b.runtime.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'turn-error')!
+      expect(row.inject).toBeUndefined()
+      expect(row.children).toBeUndefined()
+    } finally {
+      await b.runtime.dispose()
+    }
+  })
+
   it('contributes Chat View, node renderers, and stats', async () => {
     const b = await bench()
     const views = b.runtime.slots.entries('conversation.view')
@@ -108,22 +133,29 @@ describe('Chat apply wiring', () => {
     await b.runtime.dispose()
   })
 
-  it('mirrors the Host transcript preference into its Settings row', async () => {
+  it.each([
+    { desktop: false, initial: 'detailed', choice: 'standard' },
+    { desktop: true, initial: 'standard', choice: 'detailed' },
+  ] as const)('mirrors the Host transcript preference into its Settings row (desktop: $desktop)', async ({ desktop, initial, choice }) => {
+    if (desktop) {
+      vi.stubGlobal('dshDesktop', {})
+      onTestFinished(() => { vi.unstubAllGlobals() })
+    }
     const b = await bench()
+    onTestFinished(() => b.runtime.dispose())
     const row = b.runtime.slots.entries('settings.general.item')
       .find(entry => entry.options.id === 'transcript-view')!
     const face = (row.inject as unknown as () => TranscriptViewRowInjected)()
 
-    expect(face.hooks.transcriptView.getSnapshot()).toBe('standard')
-    face.setTranscriptView('detailed')
-    expect(face.hooks.transcriptView.getSnapshot()).toBe('detailed')
-    expect(b.chatSettings.set).toHaveBeenCalledWith('transcriptView', 'detailed')
+    expect(face.hooks.transcriptView.getSnapshot()).toBe(initial)
+    face.setTranscriptView(choice)
+    expect(face.hooks.transcriptView.getSnapshot()).toBe(choice)
+    expect(b.chatSettings.set).toHaveBeenCalledWith('transcriptView', choice)
 
     b.chatSettings.publish({
       status: 'ready', value: { linkOpening: 'sidebar', transcriptView: 'compact', performanceUsage: 'detailed' }, revision: 1, writable: true,
     })
     expect(face.hooks.transcriptView.getSnapshot()).toBe('compact')
-    await b.runtime.dispose()
   })
 
   it('shares the accepted performance preference with settings, composer, and turn tails', async () => {

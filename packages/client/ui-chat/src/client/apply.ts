@@ -1,4 +1,5 @@
 /** Register the Chat Conversation target, renderers, stats, and details surface. */
+import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
@@ -21,8 +22,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {
-  ChatNodeInjected, ChatScrollPosition, ChatViewInjected,
-  TurnTailOwnerProps,
+  ChatNodeInjected, ChatScrollPosition, ChatViewInjected, QuotaNoticeInjected, QuotaNoticeState, TurnTailOwnerProps,
 } from './contract/slots.ts'
 import type { ChatSnapshot } from './contract/snapshot.ts'
 import { EMPTY_CHAT_SNAPSHOT } from './contract/snapshot.ts'
@@ -31,12 +31,13 @@ import { ChatView } from './chat/ChatView.tsx'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
 import { StatsPills } from './chat/StatsPills.tsx'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
+import { QuotaNoticeHost } from './chat/QuotaNoticeHost.tsx'
 import { en, NS, zh } from './locale.ts'
 import { TranscriptViewRow, type TranscriptViewRowInjected } from './settings/TranscriptViewRow.tsx'
 import { createChatStore } from './stores.ts'
 import { TranscriptViewPolicy } from './transcript-view.ts'
 import { derivePresentationPolicy } from './presentation-policy.ts'
-import { CHAT_SETTINGS_NAMESPACE, DEFAULT_LINK_OPENING, type ChatSettings } from '../chat-settings.ts'
+import { CHAT_SETTINGS_NAMESPACE, DEFAULT_LINK_OPENING, DEFAULT_TRANSCRIPT_VIEW_MODE, type ChatSettings } from '../chat-settings.ts'
 import { LinkOpeningRow, type LinkOpeningRowInjected } from './settings/LinkOpeningRow.tsx'
 import { PerformanceUsageRow, type PerformanceUsageRowInjected } from './settings/PerformanceUsageRow.tsx'
 import { PerformanceUsagePolicy } from './performance-usage.ts'
@@ -63,10 +64,41 @@ export const inject = [
  * @param ctx - Client root context.
  */
 export function apply(ctx: Context): void {
+  const quotaNotice = createSnapshotStore<QuotaNoticeState | null>(null)
+  let quotaNoticeSeq = 0
+  // Each hold is its own token, so a release can only drop the hold it was
+  // issued for: one arriving after a dismissal or a later acquisition leaves
+  // that newer hold alone.
+  const quotaNoticeHolds = new Set<symbol>()
   const chatSources = new WeakMap<SessionBinding, ObservableSnapshot<ChatSnapshot>>()
+  const quotaSubscriptions = new Set<() => Promise<void>>()
+  ctx.effect(() => async () => {
+    await Promise.all([...quotaSubscriptions].map(dispose => dispose()))
+  }, 'ui-chat: live quota notices')
   const chatSource = (binding: SessionBinding): ObservableSnapshot<ChatSnapshot> => {
     let source = chatSources.get(binding)
     if (source === undefined) {
+      // One live quota failure publishes one frame-wide notice; history
+      // replacement or paging never does, because an old failure scrolling
+      // back into view is not news.
+      const dispose = binding.ctx.effect(() => {
+        const stop = binding.eventSource.subscribe(() => {
+          const { change } = binding.eventSource.getSnapshot()
+          if (change.kind !== 'append') return
+          for (const { event } of change.entries) {
+            if (event.type !== 'turn/end' || event.data.reason.kind !== 'error') continue
+            const { code } = event.data.reason.error
+            if (quotaNoticeHolds.size > 0 || (code !== 'QUOTA' && code !== 'ACCOUNT_QUOTA')) continue
+            quotaNotice.set({ code, seq: ++quotaNoticeSeq })
+          }
+        })
+        return () => {
+          stop()
+          chatSources.delete(binding)
+          quotaSubscriptions.delete(dispose)
+        }
+      }, 'ui-chat: Provider binding quota notices')
+      quotaSubscriptions.add(dispose)
       const target = ctx.uiConversation.binding(binding).target('chat')
       source = {
         getSnapshot: () => target.getSnapshot() ?? EMPTY_CHAT_SNAPSHOT,
@@ -114,7 +146,7 @@ export function apply(ctx: Context): void {
       }),
     }, LinkOpeningRow))
   })
-  const transcriptView = new TranscriptViewPolicy(chatSettings)
+  const transcriptView = new TranscriptViewPolicy(chatSettings, 'dshDesktop' in globalThis ? 'standard' : DEFAULT_TRANSCRIPT_VIEW_MODE)
   const presentation = derivePresentationPolicy(transcriptView.mode)
   const performancePolicy = new PerformanceUsagePolicy(chatSettings)
   ctx.effect(() => () => { transcriptView.dispose(); performancePolicy.dispose() })
@@ -214,7 +246,11 @@ export function apply(ctx: Context): void {
             read: () => chatScrollPositions.get(sessionId) ?? null,
           },
           forkAt: (seq) => {
-            ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true })
+            const turn = [...chat.getSnapshot().timeline.turns.values()].find(turn => turn.end?.seq === seq)
+            const messageId = turn?.data.get('turn-tail')?.closing?.finalNode.messageId
+            ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true, onCreated: (childId) => {
+              ctx.get('productAnalytics')?.track('branch_session_click', { session_id: childId, parent_session_id: sessionId, ...messageId === undefined ? {} : { parent_message_id: messageId }, click_position: 'footer' })
+            } })
               .then((childId) => { ctx.uiWorkspace.openSession(childId) })
               .catch(() => {
                 // Fork or child-title failure leaves the source view unchanged.
@@ -225,6 +261,25 @@ export function apply(ctx: Context): void {
     }, ChatView)
     return disposeView
   })
+
+  // The quota notice host lives in the frame-wide layer so a notice outlives
+  // the Chat panel that reported it. Its chain child lets a package with a
+  // billing surface claim the one live notice without importing Chat.
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay', id: 'chat.quota-notice', locale: NS,
+    children: { 'shell.quota-notice': { kind: 'chain', scope: 'root' } },
+    inject: (): QuotaNoticeInjected => ({
+      hooks: { notice: quotaNotice },
+      dismissNotice: () => { quotaNoticeHolds.clear(); quotaNotice.set(null) },
+      keepNoticeOpen: () => {
+        // Nothing live to retain: later failures must still publish.
+        if (quotaNotice.getSnapshot() === null) return () => {}
+        const token = Symbol('ui-chat quota notice hold')
+        quotaNoticeHolds.add(token)
+        return () => { quotaNoticeHolds.delete(token) }
+      },
+    }),
+  }, QuotaNoticeHost))
 
   ctx.slots.inject('conversation.composer.dock', () =>
     ctx.slots.register({

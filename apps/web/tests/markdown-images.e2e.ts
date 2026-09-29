@@ -23,7 +23,7 @@ import {
   webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot } from './support.ts'
+import { newEnglishPage, pinBrowserClock, saveFailureShot, WEB_FIXTURE_TIME } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/markdown-images', import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('./expected/markdown-images/ui.expected.md', import.meta.url))
@@ -118,6 +118,8 @@ function markdownImageFixture(remoteUrl: string, outsidePath: string): string {
           '',
           '![Encoded path]({{cwd}}/test%20workspace/测试图.png)',
           '',
+          '![Encoded filename]({{cwd}}/test%20workspace/测试%23100%25.png)',
+          '',
           '![Oversized image]({{cwd}}/oversized.png)',
           '',
           `![Outside workspace image](${outsidePath})`,
@@ -164,6 +166,7 @@ describe('web e2e: Markdown image rendering', () => {
   let browser: Browser
   let page: Page
   let tripwire: ReturnType<typeof watchConsole>
+  let unpinBrowserClock: (() => void) | undefined
   const mediaResponses = new Map<string, number>()
 
   beforeAll(async () => {
@@ -173,6 +176,7 @@ describe('web e2e: Markdown image rendering', () => {
     await writeFile(join(scaffold.workspaceCwd, 'local-image.png'), PNG)
     await mkdir(join(scaffold.workspaceCwd, 'test workspace'))
     await writeFile(join(scaffold.workspaceCwd, 'test workspace/测试图.png'), PNG)
+    await writeFile(join(scaffold.workspaceCwd, 'test workspace/测试#100%.png'), PNG)
     await writeFile(join(scaffold.workspaceCwd, 'corrupt.png'), 'invalid image')
     const oversized = await open(join(scaffold.workspaceCwd, 'oversized.png'), 'w')
     try {
@@ -183,9 +187,11 @@ describe('web e2e: Markdown image rendering', () => {
     const outsidePath = join(scaffold.persistenceRoot, 'outside.png')
     await writeFile(outsidePath, PNG)
     await writeFile(join(scaffold.workspaceCwd, 'active.html'), '<p>File preview</p><script>document.body.dataset.scriptRan = "yes"</script>')
-    await seedSession(scaffold, markdownImageFixture(imageOrigin.url, outsidePath), SEED_ID)
+    await seedSession(scaffold, markdownImageFixture(imageOrigin.url, outsidePath), SEED_ID, undefined,
+      { createdAt: WEB_FIXTURE_TIME - 60_000 })
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
+    unpinBrowserClock = await pinBrowserClock(page)
     tripwire = watchConsole(page)
     page.on('response', (response) => {
       const url = new URL(response.url())
@@ -198,6 +204,7 @@ describe('web e2e: Markdown image rendering', () => {
   }, 120_000)
 
   afterAll(async () => {
+    unpinBrowserClock?.()
     await browser?.close()
     await scaffold?.close()
     if (imageOrigin !== undefined) await stopServer(imageOrigin.server)
@@ -243,14 +250,14 @@ describe('web e2e: Markdown image rendering', () => {
         referrerPolicy: element.getAttribute('referrerpolicy'),
       }
     })).toEqual({
-      borderRadius: '8px',
+      borderRadius: '12px',
       decoding: 'async',
       loading: 'lazy',
       maxWidth: 'min(100%, 640px)',
       referrerPolicy: 'no-referrer',
     })
     await expect.poll(() => page.getByRole('img', { name: LOCAL_ALT }).evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(1)
-    for (const name of ['Space path', 'Encoded path']) {
+    for (const name of ['Space path', 'Encoded path', 'Encoded filename']) {
       await expect.poll(() => page.getByRole('img', { name, exact: true }).evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(1)
     }
     expect(imageOrigin.requests).toEqual([{ path: '/image.png', referer: undefined }])
@@ -272,6 +279,7 @@ describe('web e2e: Markdown image rendering', () => {
       [join(scaffold.workspaceCwd, 'valid.png'), 200],
       [`${scaffold.workspaceCwd}/./local-image.png`, 200],
       [join(scaffold.workspaceCwd, 'test workspace/测试图.png'), 200],
+      [join(scaffold.workspaceCwd, 'test workspace/测试#100%.png'), 200],
       [join(scaffold.workspaceCwd, 'oversized.png'), 413],
       [join(scaffold.persistenceRoot, 'outside.png'), 200],
       [join(scaffold.workspaceCwd, 'missing.png'), 404],

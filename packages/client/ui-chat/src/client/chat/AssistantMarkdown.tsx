@@ -17,7 +17,7 @@ import css from './AssistantMarkdown.module.css'
  * Resolve an authored absolute image path against the document's file API.
  * @param base - canonical `document.baseURI` at render time.
  * @param value - authored Markdown destination; URL escapes are decoded once.
- * @returns an absolute HTTP(S) file-API URL, or undefined for unsupported
+ * @returns an absolute Web or Desktop file-API URL, or undefined for unsupported
  * protocols and non-local paths.
  */
 export function localPathMediaUrl(base: string, value: string): string | undefined {
