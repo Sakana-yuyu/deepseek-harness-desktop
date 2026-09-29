@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-29-desktop-host-watchdog.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-29-desktop-host-watchdog.md
+/agent-note-desktop-shell-keeps-the-host-alive-with-a-respawn-watchdog:
+  en: e46b68303f246969
+  zh: 333542a587214ff2
+/agent-note-desktop-shell-keeps-the-host-alive-with-a-respawn-watchdog/problem:
+  en: 8904b3f95e59eb79
+  zh: 9ec9bf3ba1665f04
+/agent-note-desktop-shell-keeps-the-host-alive-with-a-respawn-watchdog/decision:
+  en: a1334cb8d94b7109
+  zh: 6c8e65547177843c
+/agent-note-desktop-shell-keeps-the-host-alive-with-a-respawn-watchdog/alternatives-considered:
+  en: f93165d2662cee7e
+  zh: 978c0d39accfb10d
+/agent-note-desktop-shell-keeps-the-host-alive-with-a-respawn-watchdog/consequences:
+  en: 2812c3338ebf6fc3
+  zh: aaec29239179f96d

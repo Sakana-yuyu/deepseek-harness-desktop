@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/desktop-tauri/README.md
 /deepseek-harness-desktop-tauri:
-  en: eae75da32de5d534
-  zh: 60c9ea414e843f23
+  en: 6ced853e022df81d
+  zh: 0edf50d4f3db1c79
 /deepseek-harness-desktop-tauri/architecture:
   en: acba5c5892b952ed
   zh: 0c241043756eac03
@@ -15,8 +15,8 @@
   en: e5f34ce2a428e98a
   zh: 86e5740724e6cf64
 /deepseek-harness-desktop-tauri/build:
-  en: 28eb55fecec8e410
-  zh: 5b2ad8d3d8b1439f
+  en: 8b0db36145c68d9f
+  zh: a6970476a1c6d78a
 /deepseek-harness-desktop-tauri/release:
   en: 10c3fc5995acf12f
   zh: 9c5bcffd23c14ba6

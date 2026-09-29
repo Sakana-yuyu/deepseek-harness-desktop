@@ -9,6 +9,45 @@ use tauri::{
 };
 
 const DSH_BG: Color = Color(21, 21, 23, 255);
+const DSH_BG_LIGHT: Color = Color(249, 250, 251, 255);
+
+/// OS color scheme at window creation; live changes arrive as `ThemeChanged`.
+///
+/// Tauri exposes no app-level getter before the first window exists, so the
+/// initial value reads the OS directly: `AppsUseLightTheme` on Windows and
+/// `AppleInterfaceStyle` on macOS, both defaulting to light.
+#[cfg(target_os = "windows")]
+fn system_theme() -> Theme {
+    use winreg::enums::HKEY_CURRENT_USER;
+    let personalize = winreg::RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+    match personalize.and_then(|key| key.get_value::<u32, _>("AppsUseLightTheme")) {
+        Ok(0) => Theme::Dark,
+        _ => Theme::Light,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn system_theme() -> Theme {
+    let dark = std::process::Command::new("defaults")
+        .args(["read", "-g", "AppleInterfaceStyle"])
+        .output()
+        .is_ok_and(|output| output.status.success() && output.stdout.starts_with(b"Dark"));
+    if dark { Theme::Dark } else { Theme::Light }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn system_theme() -> Theme {
+    Theme::Light
+}
+
+fn theme_background(theme: Theme) -> Color {
+    if theme == Theme::Dark { DSH_BG } else { DSH_BG_LIGHT }
+}
+
+fn theme_mode(theme: Theme) -> &'static str {
+    if theme == Theme::Dark { "dark" } else { "light" }
+}
 
 use crate::desktop_settings::{self, AgentEnvironment, CloseAction};
 use crate::i18n::{self, Msg};
@@ -56,7 +95,7 @@ fn mark_process_end(app: &AppHandle) {
 /// Reap the Host Node tree. `app.exit` / `app.restart` skip `Drop`.
 pub fn stop_host(app: &AppHandle) {
     if let Some(runtime) = app.try_state::<DesktopRuntime>() {
-        runtime.host.stop();
+        runtime.host.read().expect("host lock poisoned").stop();
     }
 }
 
@@ -76,10 +115,12 @@ pub fn open_main_window(app: &AppHandle, url: &str) -> Result<(), String> {
         i18n::Locale::Zh => "zh",
         i18n::Locale::En => "en",
     };
+    let theme = system_theme();
     let init = format!(
-        "window.__DSH_CHROME__ = {}; window.__DSH_LOCALE__ = {};",
+        "window.__DSH_CHROME__ = {}; window.__DSH_LOCALE__ = {}; window.__DSH_CHROME_THEME_INIT__ = {};",
         serde_json::to_string(&resolve_controls_layout()).unwrap_or_else(|_| "{}".into()),
         serde_json::to_string(locale).unwrap_or_else(|_| "\"en\"".into()),
+        serde_json::to_string(theme_mode(theme)).unwrap_or_else(|_| "\"dark\"".into()),
     );
 
     let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("shell.html".into()))
@@ -88,8 +129,8 @@ pub fn open_main_window(app: &AppHandle, url: &str) -> Result<(), String> {
         .center()
         .decorations(false)
         .visible(false)
-        .background_color(DSH_BG)
-        .theme(Some(Theme::Dark))
+        .background_color(theme_background(theme))
+        .theme(Some(theme))
         .initialization_script(&init);
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -126,6 +167,17 @@ pub fn open_main_window(app: &AppHandle, url: &str) -> Result<(), String> {
                     f64::from(resolve_controls_layout().titlebar_height),
                 ));
                 let _ = content.set_size(size);
+            }
+        }
+        if let WindowEvent::ThemeChanged(theme) = event {
+            // The shell paints the title bar itself, so the native theme change
+            // must reach it as a mode switch.
+            if let Some(shell) = app_handle.get_webview("main") {
+                let _ = shell.eval(&format!(
+                    "window.__DSH_CHROME_THEME__?.apply({});",
+                    serde_json::to_string(theme_mode(*theme))
+                        .unwrap_or_else(|_| "\"dark\"".into())
+                ));
             }
         }
         if let WindowEvent::CloseRequested { api, .. } = event {
@@ -273,10 +325,20 @@ pub fn remember_agent_environment(app: &AppHandle, value: AgentEnvironment) {
 
 #[cfg(test)]
 mod tests {
-    use super::environment_changed_message;
+    use super::{theme_background, theme_mode, environment_changed_message};
+    use tauri::Theme;
+    use tauri::window::Color;
 
     #[test]
     fn environment_changed_message_is_restart_toast() {
         assert_eq!(environment_changed_message(), "运行环境将在重启后生效");
+    }
+
+    #[test]
+    fn theme_helpers_follow_the_scheme() {
+        assert_eq!(theme_mode(Theme::Dark), "dark");
+        assert_eq!(theme_mode(Theme::Light), "light");
+        assert_eq!(theme_background(Theme::Dark), Color(21, 21, 23, 255));
+        assert_eq!(theme_background(Theme::Light), Color(249, 250, 251, 255));
     }
 }

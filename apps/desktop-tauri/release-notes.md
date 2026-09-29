@@ -1,3 +1,25 @@
+# DeepSeek Harness Desktop 0.2.0-rc.1-0.2
+
+## 中文
+
+- 修复最小化或系统休眠后智能体后端离线且一直重连不上的问题：桌面壳新增宿主保活看门狗，周期探测 Web 端口；宿主进程消失（如 WSL 休眠后被回收、Node 崩溃）时自动在同一端口重启，并将界面引导到新的认证地址，页面无需手动刷新即可恢复。
+- 修复浅色主题下标题栏仍为黑色的问题：标题栏现在跟随系统颜色配置，启动时读取 Windows「应用模式」/macOS「外观」设置，系统切换深浅色时即时更新，窗口底色同步匹配。
+- 桌面壳其余行为不变：独立 WebView 认证、托盘、通知与签名更新。
+
+更新前请结束正在运行的任务并备份 Harness 主目录。上游进入 rc 阶段但尚未稳定；会话写入可能生成新的版本文件，旧版本无法读取新版本新增的数据。
+
+包含 Windows x64/x86 NSIS、macOS Intel/Apple Silicon DMG，以及 Linux x64 AppImage/deb。更新产物使用 Tauri 签名，尚无操作系统代码签名或 macOS notarization。
+
+## English
+
+- Fix the agent backend going offline with endless reconnects after minimizing or system sleep: the desktop shell now runs a host keep-alive watchdog that probes the web port periodically. When the Host process disappears (a WSL VM reclaimed after sleep, a crashed Node process), it respawns on the same port and repoints the interface at the fresh authenticated URL, so the page recovers without a manual refresh.
+- Fix the title bar staying black under the light theme: the title bar now follows the system color scheme, reading Windows "app mode" / macOS appearance at startup and updating live when the system switches, with the window background matching.
+- The rest of the desktop shell is unchanged: the separate WebView authentication, tray, notifications, and signed updates.
+
+Finish running tasks and back up the Harness home before upgrading. Upstream is in the rc stage but not yet stable. Session writes may create a new format generation; older releases cannot read data introduced by the new version.
+
+Includes Windows x64/x86 NSIS, macOS Intel/Apple Silicon DMG, and Linux x64 AppImage/deb. Update artifacts carry Tauri signatures but lack operating-system code signing and macOS notarization.
+
 # DeepSeek Harness Desktop 0.2.0-rc.1-0.1
 
 ## 中文

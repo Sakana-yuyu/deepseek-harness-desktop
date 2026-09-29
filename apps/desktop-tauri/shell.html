@@ -11,12 +11,19 @@
       --dsw-static-neutral-bluish-800: rgb(53, 54, 56);
       --dsw-static-neutral-bluish-875: rgb(35, 35, 36);
       --dsw-static-neutral-bluish-950: rgb(21, 21, 23);
+      --dsw-static-neutral-bluish-1000: rgb(15, 17, 21);
       --dsw-static-red-400: rgb(242, 90, 90);
       --bg: var(--dsw-static-neutral-bluish-950);
       --line: var(--dsw-static-neutral-bluish-800);
       --text: var(--dsw-static-neutral-bluish-50);
       --hover: var(--dsw-static-neutral-bluish-875);
       --close-hover: var(--dsw-static-red-400);
+    }
+    body.light {
+      --bg: var(--dsw-static-neutral-bluish-50);
+      --line: rgba(0, 0, 0, 0.08);
+      --text: var(--dsw-static-neutral-bluish-1000);
+      --hover: rgba(38, 49, 72, 0.06);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
@@ -98,8 +105,6 @@
       align-items: center;
       justify-content: center;
       padding: 24px;
-      --dsw-static-neutral-bluish-00: rgb(255, 255, 255);
-      --dsw-static-neutral-bluish-1000: rgb(15, 17, 21);
       --dsw-static-neutral-bluish-700: rgb(97, 102, 107);
       --dsw-static-neutral-bluish-750: rgb(67, 69, 74);
       --dsw-alias-bg-mask-1: rgba(0, 0, 0, 0.24);
@@ -221,6 +226,14 @@
   <script src="desktop-i18n.js"></script>
   <script>
     window.DSH_I18N.apply()
+
+    window.__DSH_CHROME_THEME__ = {
+      apply(mode) {
+        document.body.classList.toggle('light', mode === 'light')
+      },
+    }
+    window.__DSH_CHROME_THEME__.apply(window.__DSH_CHROME_THEME_INIT__ || 'dark')
+
     const icons = {
       minimize: '<svg viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="5" width="8" height="1" fill="currentColor"/></svg>',
       maximize: '<svg viewBox="0 0 10 10" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1"/></svg>',

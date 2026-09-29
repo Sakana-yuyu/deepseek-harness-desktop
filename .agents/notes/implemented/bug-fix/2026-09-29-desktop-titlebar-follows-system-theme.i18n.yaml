@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-29-desktop-titlebar-follows-system-theme.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-29-desktop-titlebar-follows-system-theme.md
+/agent-note-desktop-title-bar-follows-the-system-color-scheme:
+  en: 204b891a2276196b
+  zh: 6c3509e854cf1127
+/agent-note-desktop-title-bar-follows-the-system-color-scheme/problem:
+  en: 8a09cadb02e3554a
+  zh: e8c06daec783c299
+/agent-note-desktop-title-bar-follows-the-system-color-scheme/decision:
+  en: c3d621bc1268e87b
+  zh: e5be8d6af827c4a6
+/agent-note-desktop-title-bar-follows-the-system-color-scheme/alternatives-considered:
+  en: a67bc50494441e36
+  zh: dc5641f2fb461e96
+/agent-note-desktop-title-bar-follows-the-system-color-scheme/consequences:
+  en: b76902c2ec186d93
+  zh: d07dc4b73810253d

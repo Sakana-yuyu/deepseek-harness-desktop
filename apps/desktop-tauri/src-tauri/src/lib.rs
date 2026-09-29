@@ -153,9 +153,20 @@ async fn boot_app(app: AppHandle, bundled: Option<PathBuf>) -> Result<(), String
         }
     };
 
-    let web_url = runtime.web_url.clone();
-    if !runtime.host.disabled_plugins.is_empty() {
-        let names = runtime.host.disabled_plugins.join("、");
+    let web_url = runtime.web_url.read().expect("web_url lock poisoned").clone();
+    if !runtime
+        .host
+        .read()
+        .expect("host lock poisoned")
+        .disabled_plugins
+        .is_empty()
+    {
+        let names = runtime
+            .host
+            .read()
+            .expect("host lock poisoned")
+            .disabled_plugins
+            .join("、");
         boot_log::error(&format!("plugins disabled by rescue patch: {names}"));
         notify::toast(
             &app,
@@ -173,6 +184,7 @@ async fn boot_app(app: AppHandle, bundled: Option<PathBuf>) -> Result<(), String
         let _ = splash.close();
     }
     boot_log::info("boot complete");
+    runtime::watchdog::start(app.clone());
     let app_for_update = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = updater::install_available(&app_for_update, Arc::new(|_| {})).await {
@@ -307,7 +319,9 @@ async fn boot_wsl_runtime(
     });
 
     progress(ProvisionEvent::Status(i18n::t(Msg::StatusStartWeb).into()));
-    let host = spawn_wsl_web_host(&wsl_paths, host_overlay.as_ref(), &runner).await?;
+    let host =
+        spawn_wsl_web_host(&wsl_paths, host_overlay.as_ref(), &runner, runtime::config::DEFAULT_WEB_PORT)
+            .await?;
     Ok(DesktopRuntime::start_wsl(host, wsl_paths))
 }
 
