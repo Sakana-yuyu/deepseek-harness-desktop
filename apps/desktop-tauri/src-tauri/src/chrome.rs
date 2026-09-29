@@ -1,6 +1,6 @@
 //! Frameless main window, close preference, and custom title-bar commands.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use tauri::window::Color;
 use tauri::{
@@ -49,6 +49,35 @@ fn theme_mode(theme: Theme) -> &'static str {
     if theme == Theme::Dark { "dark" } else { "light" }
 }
 
+/// Observer script mirroring the client's effective scheme onto the shell: the
+/// theme presenter keeps `body[data-ds-dark-theme]` current, and every change
+/// is reported to the shell's `/theme` route (a `no-cors` POST needs no CORS
+/// handshake on the loopback server).
+fn theme_report_script(theme_url: &str) -> String {
+    let url = serde_json::to_string(theme_url).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        ";(() => {{\n\
+        \x20 const url = {url}\n\
+        \x20 if (!url || window.__DSH_THEME_REPORT__) return\n\
+        \x20 let last\n\
+        \x20 const report = () => {{\n\
+        \x20   const mode = document.body?.hasAttribute('data-ds-dark-theme') ? 'dark' : 'light'\n\
+        \x20   if (mode === last) return\n\
+        \x20   last = mode\n\
+        \x20   try {{ fetch(url, {{ method: 'POST', mode: 'no-cors', body: mode }}) }} catch {{}}\n\
+        \x20 }}\n\
+        \x20 const arm = () => {{\n\
+        \x20   report()\n\
+        \x20   window.__DSH_THEME_REPORT__?.disconnect()\n\
+        \x20   window.__DSH_THEME_REPORT__ = new MutationObserver(report)\n\
+        \x20   window.__DSH_THEME_REPORT__.observe(document.body, {{ attributes: true, attributeFilter: ['data-ds-dark-theme'] }})\n\
+        \x20 }}\n\
+        \x20 if (document.body) arm()\n\
+        \x20 else document.addEventListener('DOMContentLoaded', arm, {{ once: true }})\n\
+        }})()"
+    )
+}
+
 use crate::desktop_settings::{self, AgentEnvironment, CloseAction};
 use crate::i18n::{self, Msg};
 use crate::notify;
@@ -57,6 +86,42 @@ use crate::runtime::DesktopRuntime;
 use crate::window_layout::resolve_controls_layout;
 
 static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// Client-reported effective scheme: 0 none (follow the system), 1 light, 2 dark.
+static CLIENT_THEME: AtomicU8 = AtomicU8::new(0);
+
+/// Record the content webview's effective color scheme and mirror it onto the
+/// shell title bar. The client presenter keeps `body[data-ds-dark-theme]` in
+/// sync with its resolved theme, and the injected observer posts every change
+/// to the notify server's `/theme` route.
+pub fn apply_client_theme(app: &AppHandle, mode: &str) {
+    let (theme, code) = match mode {
+        "light" => (Theme::Light, 1),
+        "dark" => (Theme::Dark, 2),
+        other => {
+            if !other.is_empty() {
+                boot_log::info(&format!("ignoring unknown client theme report: {other}"));
+            }
+            return;
+        }
+    };
+    CLIENT_THEME.store(code, Ordering::SeqCst);
+    boot_log::info(&format!("client theme report: {mode}"));
+    apply_shell_theme(app, theme_mode(theme));
+}
+
+/// Apply one shell title-bar mode to the shell webview.
+fn apply_shell_theme(app: &AppHandle, mode: &str) {
+    if let Some(shell) = app.get_webview("main") {
+        let script = format!(
+            "window.__DSH_CHROME_THEME__?.apply({});",
+            serde_json::to_string(mode).unwrap_or_else(|_| "\"dark\"".into())
+        );
+        if let Err(error) = shell.eval(&script) {
+            boot_log::error(&format!("shell theme eval failed: {error}"));
+        }
+    }
+}
 
 /// True when the process is allowed to exit (tray Quit/Restart, Exit close, updater restart).
 pub fn quit_requested() -> bool {
@@ -147,9 +212,14 @@ pub fn open_main_window(app: &AppHandle, url: &str) -> Result<(), String> {
     // 独立 WebView 提供第一方浏览器环境，保留上游 SameSite=Strict 的认证 cookie。
     let content_url = url.parse::<url::Url>().map_err(|_| "Host 启动地址无效")?;
     let native = app.get_window("main").ok_or("main window is missing")?;
+    let mut content_builder =
+        WebviewBuilder::new("content", WebviewUrl::External(content_url));
+    if let Some(notify) = app.try_state::<notify::NotifyHandle>() {
+        content_builder = content_builder.initialization_script(theme_report_script(&notify.theme_url));
+    }
     let content = native
         .add_child(
-            WebviewBuilder::new("content", WebviewUrl::External(content_url)),
+            content_builder,
             LogicalPosition::new(0.0, f64::from(resolve_controls_layout().titlebar_height)),
             content_size(&native)?,
         )
@@ -170,14 +240,12 @@ pub fn open_main_window(app: &AppHandle, url: &str) -> Result<(), String> {
             }
         }
         if let WindowEvent::ThemeChanged(theme) = event {
-            // The shell paints the title bar itself, so the native theme change
-            // must reach it as a mode switch.
-            if let Some(shell) = app_handle.get_webview("main") {
-                let _ = shell.eval(&format!(
-                    "window.__DSH_CHROME_THEME__?.apply({});",
-                    serde_json::to_string(theme_mode(*theme))
-                        .unwrap_or_else(|_| "\"dark\"".into())
-                ));
+            // The shell paints the title bar itself. While the client page owns
+            // the scheme report, system flips reach the bar through the page's
+            // own `prefers-color-scheme` handling; before it reports, the OS
+            // change must reach the bar directly.
+            if CLIENT_THEME.load(Ordering::SeqCst) == 0 {
+                apply_shell_theme(&app_handle, theme_mode(*theme));
             }
         }
         if let WindowEvent::CloseRequested { api, .. } = event {
@@ -325,7 +393,7 @@ pub fn remember_agent_environment(app: &AppHandle, value: AgentEnvironment) {
 
 #[cfg(test)]
 mod tests {
-    use super::{theme_background, theme_mode, environment_changed_message};
+    use super::{environment_changed_message, theme_background, theme_mode, theme_report_script};
     use tauri::Theme;
     use tauri::window::Color;
 
@@ -340,5 +408,13 @@ mod tests {
         assert_eq!(theme_mode(Theme::Light), "light");
         assert_eq!(theme_background(Theme::Dark), Color(21, 21, 23, 255));
         assert_eq!(theme_background(Theme::Light), Color(249, 250, 251, 255));
+    }
+
+    #[test]
+    fn theme_report_script_watches_the_dark_attribute() {
+        let script = theme_report_script("http://127.0.0.1:9/theme");
+        assert!(script.contains("http://127.0.0.1:9/theme"));
+        assert!(script.contains("data-ds-dark-theme"));
+        assert!(script.contains("MutationObserver"));
     }
 }

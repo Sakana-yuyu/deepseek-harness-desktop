@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-29-desktop-titlebar-theme-follow.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-29-desktop-titlebar-theme-follow.md
+/agent-note-desktop-title-bar-follows-the-app-theme-then-the-system:
+  en: 35c37bbfabe1522d
+  zh: 05b6334eb862c071
+/agent-note-desktop-title-bar-follows-the-app-theme-then-the-system/problem:
+  en: b3a0bb43f35f68cf
+  zh: 2ca66cbec55566eb
+/agent-note-desktop-title-bar-follows-the-app-theme-then-the-system/decision:
+  en: 4dfbfa59a1167124
+  zh: 85a3865ce5d9b0b1
+/agent-note-desktop-title-bar-follows-the-app-theme-then-the-system/alternatives-considered:
+  en: 4a7c4f148888a014
+  zh: c0f5a71d4d8bc6f6
+/agent-note-desktop-title-bar-follows-the-app-theme-then-the-system/consequences:
+  en: 0672bbca84893eb8
+  zh: 2dd017085e7261d0
