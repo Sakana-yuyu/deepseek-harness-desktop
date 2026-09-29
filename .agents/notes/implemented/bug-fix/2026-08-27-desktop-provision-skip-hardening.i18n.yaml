@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-27-desktop-provision-skip-hardening.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-27-desktop-provision-skip-hardening.md
-2026-08-27-desktop-provision-skip-hardening.md: 2e058154ca9cda61cba61dfa70c0540bd8702996
-2026-08-27-desktop-provision-skip-hardening.zh.md: 7fe4673a7876db3a7ee776eb4de66ad31f5cc50b
+/agent-note-desktop-provision-skip-hardening:
+  en: 198e8dc6ccccbdbf
+  zh: aec66be5106966af
+/agent-note-desktop-provision-skip-hardening/problem:
+  en: c6086e0231f34b0d
+  zh: 02c98cecbc29eaf2
+/agent-note-desktop-provision-skip-hardening/decision:
+  en: 710f57812fbf22d1
+  zh: 066e7fdad60d7060
+/agent-note-desktop-provision-skip-hardening/alternatives-considered:
+  en: c23728dc97379af6
+  zh: 1ef548c1086e5b04
+/agent-note-desktop-provision-skip-hardening/consequences:
+  en: 19e6a66d4cf37c27
+  zh: 3f0c034474b9ac06

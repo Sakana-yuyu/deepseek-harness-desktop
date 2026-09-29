@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-30-pwsh-terminal-cursor-query.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-30-pwsh-terminal-cursor-query.md
-2026-08-30-pwsh-terminal-cursor-query.md: 5cf388360aef998642340a241cfe6d652dc1850f
-2026-08-30-pwsh-terminal-cursor-query.zh.md: edb208b14f276fd7c58bccbb6706edfbf8240ac8
+/agent-note-hosted-pwsh-terminals-answer-the-cursor-position-query:
+  en: 6209bd17abe64a8f
+  zh: 6b7abf0d963c0704
+/agent-note-hosted-pwsh-terminals-answer-the-cursor-position-query/problem:
+  en: e5574830d3f18953
+  zh: 2afde56d316c0e73
+/agent-note-hosted-pwsh-terminals-answer-the-cursor-position-query/decision:
+  en: 500c129989f84ae2
+  zh: 05157a0931ba13eb
+/agent-note-hosted-pwsh-terminals-answer-the-cursor-position-query/alternatives-considered:
+  en: df78be1f02495dea
+  zh: fc3ab3f11032cf86
+/agent-note-hosted-pwsh-terminals-answer-the-cursor-position-query/consequences:
+  en: 2cb48e5c70623621
+  zh: eda16591752d9a43

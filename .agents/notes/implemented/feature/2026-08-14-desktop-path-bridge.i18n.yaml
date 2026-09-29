@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-14-desktop-path-bridge.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-14-desktop-path-bridge.md
-2026-08-14-desktop-path-bridge.md: 00c9f14c4fbab867da262b1519680f2b0ee93713
-2026-08-14-desktop-path-bridge.zh.md: 8838990236759c209fd8c76c6bae8805a2f46161
+/agent-note-desktop-path-bridge-for-host-clis:
+  en: f0d119b15d9dcd81
+  zh: eabf13a5111da811
+/agent-note-desktop-path-bridge-for-host-clis/problem:
+  en: f32702c89eab4f63
+  zh: 99e3090cfa62ddcf
+/agent-note-desktop-path-bridge-for-host-clis/decision:
+  en: 2a249bcfabcf4c54
+  zh: 883d1270d8cc7a4b
+/agent-note-desktop-path-bridge-for-host-clis/alternatives-considered:
+  en: 4506cc29c0a9bdb5
+  zh: 0f818a00900dc9c3
+/agent-note-desktop-path-bridge-for-host-clis/consequences:
+  en: 2c82f00d9fd77c0a
+  zh: 238efb72ffe54abc

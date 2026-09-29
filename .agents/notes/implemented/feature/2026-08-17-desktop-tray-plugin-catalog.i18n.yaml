@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-17-desktop-tray-plugin-catalog.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-17-desktop-tray-plugin-catalog.md
-2026-08-17-desktop-tray-plugin-catalog.md: 0c11d33bc005189fcc36579dce0ccb9db67a6470
-2026-08-17-desktop-tray-plugin-catalog.zh.md: 09ceb323e68a77e7728a06af6e2a12e9e1a2fe61
+/agent-note-desktop-tray-install-of-the-sakana-plugin-catalog:
+  en: 5303b8bcb4299f8a
+  zh: f474cd473d2fa299
+/agent-note-desktop-tray-install-of-the-sakana-plugin-catalog/problem:
+  en: 5f9adb7f049d9fbd
+  zh: 6c6cebff3ea3cd78
+/agent-note-desktop-tray-install-of-the-sakana-plugin-catalog/decision:
+  en: 2b7b971ab47b22e6
+  zh: 121e86ae7a5a2509
+/agent-note-desktop-tray-install-of-the-sakana-plugin-catalog/alternatives-considered:
+  en: cbda92ad6cd45176
+  zh: 67a81c620ff4130b
+/agent-note-desktop-tray-install-of-the-sakana-plugin-catalog/consequences:
+  en: 876dbd1eab4b107d
+  zh: 8178904645e717d8

@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-14-cross-platform-desktop-source-provisioning.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-14-cross-platform-desktop-source-provisioning.md
-2026-08-14-cross-platform-desktop-source-provisioning.md: a743806ee04e159bc9d46643af3f74970fa25712
-2026-08-14-cross-platform-desktop-source-provisioning.zh.md: 64eb312649247796e28f065e86073f185f78c262
+/agent-note-cross-platform-desktop-source-provisioning:
+  en: 0d44bd6500f03d70
+  zh: 519c7772ad821ca1
+/agent-note-cross-platform-desktop-source-provisioning/problem:
+  en: 2dcf928a12de4043
+  zh: 1b4dc54d87358866
+/agent-note-cross-platform-desktop-source-provisioning/decision:
+  en: 8c7f05ed30d75361
+  zh: 7c0019d6da6c3717
+/agent-note-cross-platform-desktop-source-provisioning/alternatives-considered:
+  en: 053fb7594fa8b148
+  zh: 1fbe025e2bcb7a75
+/agent-note-cross-platform-desktop-source-provisioning/consequences:
+  en: 5608eab44a35e603
+  zh: 108a1ae4eadd5ed0

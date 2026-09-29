@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-19-desktop-rc7-provision-fallback.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-19-desktop-rc7-provision-fallback.md
-2026-08-19-desktop-rc7-provision-fallback.md: dd0bce8a8ece025bfdd4f71df89eee1af293eeba
-2026-08-19-desktop-rc7-provision-fallback.zh.md: 6aa3dfb729c074c48c80e2e8398b3e4bfc0fed56
+/agent-note-desktop-rc-7-provisioning-failure-and-unbootable-fallback:
+  en: 3a48fae19c5bb2a8
+  zh: 3166b374b15430b3
+/agent-note-desktop-rc-7-provisioning-failure-and-unbootable-fallback/problem:
+  en: 907b57474c444772
+  zh: acabb0742beb5c3f
+/agent-note-desktop-rc-7-provisioning-failure-and-unbootable-fallback/decision:
+  en: 8170501fce6acdbd
+  zh: 798678bfaa5687eb
+/agent-note-desktop-rc-7-provisioning-failure-and-unbootable-fallback/alternatives-considered:
+  en: 76a90da09bedecea
+  zh: 833be12e265e42d2
+/agent-note-desktop-rc-7-provisioning-failure-and-unbootable-fallback/consequences:
+  en: b847b1ed5875ab82
+  zh: c2bfd331c400e394

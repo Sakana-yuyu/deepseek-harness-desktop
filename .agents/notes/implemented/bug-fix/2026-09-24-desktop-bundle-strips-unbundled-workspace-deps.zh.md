@@ -17,6 +17,12 @@ Status: implemented
 - manifest 哈希仍然对源码切片计算，因此打包内容变化时哈希照常变化；剔除是该内容的确定性函数。
 - 若未来某个 profile 在运行时解析到被剔除的 bundle，解析会响亮失败；正确的修复是把该包移出被跳过的组，而不是给打包器开特例。
 
+## 备选方案
+
+- 连 experimental 组一起发行，让所有 `workspace:*` 引用都可解析。否决：这会把九个传递包及其可选原生依赖拖进每一次首次安装，而桌面 web profile 从不启动这些 bundle。
+- 直接改写上游 manifest，删掉 experimental 依赖。否决：仓库 workspace 保持不变是既定原则；发行 manifest 与源 manifest 的差异必须仅由打包步骤可复现地产生。
+- 保留 manifest 原样，用能从 npm registry 解析缺失包的锁文件做预配。否决：workspace 包不发布到 registry，回退解析同样会失败。
+
 ## 后果
 
 - 上游 manifest 引用 experimental 包时，首次预配恢复正常。

@@ -17,6 +17,12 @@ Upstream `apps/cli` now declares `@deepseek-ai/dsh-experimental-agent-team-profi
 - The manifest hash continues to hash the source slices, so it still changes whenever bundled content changes; the strip is a deterministic function of that content.
 - If a future profile resolves one of the stripped bundles at runtime, resolution fails loud, and the fix is to move that package out of a skipped group, not to special-case the bundle.
 
+## Alternatives considered
+
+- Ship the experimental group too, so every `workspace:*` reference resolves. Rejected: it pulls nine transitive packages and their optional native dependencies into every first-run install for bundles the desktop web profile never launches.
+- Patch upstream manifests in place to drop the experimental dependencies. Rejected: the repository workspace stays untouched by design; divergence between the shipped and source manifests must be reproducible from the bundle step alone.
+- Keep the manifests intact and provision with a lockfile that resolves the missing packages from the npm registry. Rejected: workspace packages are not published, so registry fallbacks would fail the same way.
+
 ## Consequences
 
 - First-run provisioning succeeds again on upstream manifests that reference experimental packages.

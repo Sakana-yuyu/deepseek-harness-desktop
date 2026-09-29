@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-17-desktop-chrome-i18n.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-17-desktop-chrome-i18n.md
-2026-08-17-desktop-chrome-i18n.md: d223762874cb14a45151ad845fa3a8b4c161ae24
-2026-08-17-desktop-chrome-i18n.zh.md: 4192a1e0da3448002d4ac96b8e4cc32c86112bc9
+/agent-note-desktop-native-chrome-i18n:
+  en: fae8c992329b3b84
+  zh: c3954bc262c86356
+/agent-note-desktop-native-chrome-i18n/problem:
+  en: 8f74ce5d77977691
+  zh: 4fef469e00c26e17
+/agent-note-desktop-native-chrome-i18n/decision:
+  en: 5edb339cb67ec469
+  zh: 9ebc70a907c0a857
+/agent-note-desktop-native-chrome-i18n/alternatives-considered:
+  en: e944647e940517f9
+  zh: 09052045d639a12c
+/agent-note-desktop-native-chrome-i18n/consequences:
+  en: 6672a65737f72611
+  zh: 9f3ca26e1204ee60

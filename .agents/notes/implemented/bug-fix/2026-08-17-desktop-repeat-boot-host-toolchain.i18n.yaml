@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-17-desktop-repeat-boot-host-toolchain.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-17-desktop-repeat-boot-host-toolchain.md
-2026-08-17-desktop-repeat-boot-host-toolchain.md: 614b817241e783007c56d2d9826382f1d3b6efe8
-2026-08-17-desktop-repeat-boot-host-toolchain.zh.md: ac452fe4aa137a9d898f87273292714e39aee8cf
+/agent-note-desktop-repeat-boot-reuses-a-recorded-host-toolchain:
+  en: d7fe77bb87e4ea16
+  zh: 0f3bfbdfe139202d
+/agent-note-desktop-repeat-boot-reuses-a-recorded-host-toolchain/problem:
+  en: 9c138c3273c27998
+  zh: 6287c70b40fbce4c
+/agent-note-desktop-repeat-boot-reuses-a-recorded-host-toolchain/decision:
+  en: 7773417c19f3a5ff
+  zh: bf92962e827688f0
+/agent-note-desktop-repeat-boot-reuses-a-recorded-host-toolchain/alternatives-considered:
+  en: baae762fed753ce5
+  zh: 6ae9670a382a1fa2
+/agent-note-desktop-repeat-boot-reuses-a-recorded-host-toolchain/consequences:
+  en: a2075e0eae1a6d0f
+  zh: 0361e96e5817182e

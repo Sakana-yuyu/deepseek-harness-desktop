@@ -1,6 +1,28 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/desktop-tauri/README.md
-README.md: 25da702dda23882778954218fa627f242c7d0760
-README.zh.md: 7af840b9958d210e246ee8479d6932f5cd8e419d
+/deepseek-harness-desktop-tauri:
+  en: eae75da32de5d534
+  zh: 60c9ea414e843f23
+/deepseek-harness-desktop-tauri/architecture:
+  en: acba5c5892b952ed
+  zh: 0c241043756eac03
+/deepseek-harness-desktop-tauri/architecture/mirrors-override-via-env:
+  en: 64def44399eb89c3
+  zh: 7a26e68a01090e7c
+/deepseek-harness-desktop-tauri/architecture/dev-vs-production:
+  en: e5f34ce2a428e98a
+  zh: 86e5740724e6cf64
+/deepseek-harness-desktop-tauri/build:
+  en: 28eb55fecec8e410
+  zh: 5b2ad8d3d8b1439f
+/deepseek-harness-desktop-tauri/release:
+  en: 10c3fc5995acf12f
+  zh: 9c5bcffd23c14ba6
+/deepseek-harness-desktop-tauri/run:
+  en: 29bf9d17284e41a2
+  zh: 26ace279b0877eb8
+/deepseek-harness-desktop-tauri/scripts:
+  en: 1cf0f1f74c7b483e
+  zh: 64f13601d28cb9bf
